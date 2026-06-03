@@ -2,25 +2,25 @@
 image_model_v2.py — Ghibli-Diffusion image generation for StoryForge v2.
 
 Model: nitrosocke/Ghibli-Diffusion (SD 1.5 fine-tune, ~1.7 GB)
-CPU-only; no GPU required. 15 steps at 512×512.
+CPU-only; no GPU required. All heavy imports are deferred until first call
+so startup memory stays low on HF free-tier Spaces.
 """
 
 import io
-import time
 from functools import lru_cache
 
-from diffusers import StableDiffusionPipeline
-import torch
-
-
 MODEL_ID = "nitrosocke/Ghibli-Diffusion"
-_STEPS = 15
+_STEPS = 10
 _GUIDANCE = 6.0
-_SIZE = 512
+_SIZE = 384
 
 
 @lru_cache(maxsize=1)
-def _load_pipeline() -> StableDiffusionPipeline:
+def _load_pipeline():
+    # Deferred imports — torch + diffusers are not loaded until first image request
+    import torch
+    from diffusers import StableDiffusionPipeline
+
     pipe = StableDiffusionPipeline.from_pretrained(
         MODEL_ID,
         torch_dtype=torch.float32,
@@ -51,18 +51,20 @@ def generate_image(prompt: str) -> bytes:
 # ── Latency smoke-test ────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import time
+
     TEST_PROMPT = (
         "ghibli style, a small brave fox standing at the edge of an enchanted forest, "
         "soft morning light, watercolor, children's book illustration"
     )
 
-    print("Loading pipeline…")
+    print("Loading pipeline...")
     t0 = time.perf_counter()
     _load_pipeline()
     load_time = time.perf_counter() - t0
     print(f"  Model loaded in {load_time:.1f}s")
 
-    print("Generating image…")
+    print("Generating image...")
     t1 = time.perf_counter()
     png_bytes = generate_image(TEST_PROMPT)
     gen_time = time.perf_counter() - t1

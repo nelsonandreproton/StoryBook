@@ -21,7 +21,6 @@ import threading
 import gradio as gr
 from engine_v2 import StoryState, SYSTEM, build_prompt, parse_response, apply_turn, build_image_prompt
 import model as story_model
-import image_model_v2 as img_model
 
 THEMES = [
     ("🦊", "A brave little fox",      "courage & friendship"),
@@ -126,9 +125,10 @@ def _generate_image_threaded(beat: str, hero: str, world: str) -> list:
     result = []
     def _run():
         try:
+            import image_model_v2 as img_model
+            from PIL import Image
             img_prompt = build_image_prompt(beat, hero, world)
             png_bytes = img_model.generate_image(img_prompt)
-            from PIL import Image
             result.append(Image.open(io.BytesIO(png_bytes)))
         except Exception:
             pass
