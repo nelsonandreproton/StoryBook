@@ -1,0 +1,421 @@
+/* StoryForge — Storybook theme (Off-Brand badge) */
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Nunito:wght@400;600&display=swap');
+
+/* ── Variables ──────────────────────────────────────── */
+:root {
+    --cream:      #fdf6ec;
+    --parchment:  #f5e8d0;
+    --parchment2: #ecdbb8;
+    --ink:        #2c1810;
+    --ink-soft:   #5a3e2b;
+    --coral:      #e8734a;
+    --coral-dark: #c85a33;
+    --green:      #4a8c5c;
+    --green-dark: #357a48;
+    --gold:       #d4a843;
+    --shadow:     rgba(44, 24, 16, 0.13);
+    --page-max:   640px;
+}
+
+/* ── Base ───────────────────────────────────────────── */
+body, .gradio-container {
+    background: var(--cream) !important;
+    font-family: 'Nunito', sans-serif !important;
+    color: var(--ink) !important;
+}
+footer { display: none !important; }
+
+/* ── Kill all Gradio focus rings / loading borders ──── */
+*:focus, *:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
+.block:focus, .column:focus, .block:focus-visible, .column:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+}
+/* Kill Gradio's orange generating border — matches StreamingBar Svelte rule exactly */
+.generating.svelte-1uj8rng,
+.generating,
+.wrap.generating {
+    border: none !important;
+    border-color: transparent !important;
+    border-width: 0px !important;
+    outline: none !important;
+    box-shadow: none !important;
+    animation: none !important;
+}
+.block.border_focus,
+.block.border_focus.svelte-1plpy97,
+.column.border_focus,
+.column.border_focus.svelte-siq5d6 {
+    border-color: transparent !important;
+    border-width: 0px !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* ── Title ──────────────────────────────────────────── */
+#app-title {
+    font-family: 'Fredoka', sans-serif !important;
+    font-size: 2.8rem !important;
+    font-weight: 700 !important;
+    color: var(--coral) !important;
+    text-align: center !important;
+    margin-bottom: 0.2rem !important;
+    animation: fadeInDown 0.6s ease both;
+}
+#app-tagline {
+    text-align: center !important;
+    color: var(--ink-soft) !important;
+    font-size: 1.1rem !important;
+    margin-bottom: 1.5rem !important;
+    animation: fadeInDown 0.8s ease both;
+}
+
+/* ── Setup ──────────────────────────────────────────── */
+#setup-section { animation: fadeIn 0.5s ease both; }
+
+#sliders-row {
+    background: var(--parchment);
+    border-radius: 16px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.4rem;
+    box-shadow: 0 2px 8px var(--shadow);
+}
+
+#themes-label {
+    font-family: 'Fredoka', sans-serif !important;
+    font-size: 1.3rem !important;
+    font-weight: 600 !important;
+    color: var(--ink) !important;
+    margin-bottom: 0.8rem !important;
+}
+
+/* ── Theme bus (hidden message bus textbox) ─────────── */
+#theme-bus { display: none !important; }
+
+/* ── Theme grid ─────────────────────────────────────── */
+.theme-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 0.5rem;
+}
+
+/* ── Theme cards ────────────────────────────────────── */
+.theme-card {
+    background: var(--parchment);
+    border: 2px solid transparent;
+    border-radius: 20px;
+    box-shadow: 0 4px 14px var(--shadow);
+    padding: 1.2rem 0.6rem;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    min-height: 110px;
+    justify-content: center;
+    user-select: none;
+}
+.theme-card:hover {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 10px 24px var(--shadow);
+    border-color: var(--coral);
+    background: #fff8f0;
+}
+.theme-card:active { transform: translateY(-2px); }
+
+/* Keep old selector for any leftover button-based cards */
+.theme-card button {
+    background: var(--parchment) !important;
+    border: 2px solid transparent !important;
+    border-radius: 20px !important;
+    box-shadow: 0 4px 14px var(--shadow) !important;
+    font-family: 'Fredoka', sans-serif !important;
+    color: var(--ink) !important;
+    padding: 1.2rem 0.6rem !important;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease,
+                background 0.18s ease !important;
+    cursor: pointer !important;
+    min-height: 110px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 0.25rem !important;
+    line-height: 1.2 !important;
+}
+.theme-card button:hover {
+    transform: translateY(-5px) scale(1.02) !important;
+    box-shadow: 0 10px 24px var(--shadow) !important;
+    border-color: var(--coral) !important;
+    background: #fff8f0 !important;
+}
+.theme-card button:active { transform: translateY(-2px) !important; }
+
+/* Emoji / title / subtitle inside card */
+.tc-emoji {
+    font-size: 2.4rem;
+    line-height: 1;
+    display: block;
+}
+.tc-title {
+    font-size: 1rem;
+    font-weight: 600;
+    display: block;
+}
+.tc-sub {
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    display: block;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 400;
+}
+
+/* Stagger entrance */
+.theme-grid .theme-card:nth-child(1) { animation: fadeIn 0.4s 0.05s ease both; }
+.theme-grid .theme-card:nth-child(2) { animation: fadeIn 0.4s 0.10s ease both; }
+.theme-grid .theme-card:nth-child(3) { animation: fadeIn 0.4s 0.15s ease both; }
+.theme-grid .theme-card:nth-child(4) { animation: fadeIn 0.4s 0.20s ease both; }
+.theme-grid .theme-card:nth-child(5) { animation: fadeIn 0.4s 0.25s ease both; }
+.theme-grid .theme-card:nth-child(6) { animation: fadeIn 0.4s 0.30s ease both; }
+
+/* ── Beat card ──────────────────────────────────────── */
+#beat-display,
+#beat-display > div {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+}
+
+.beat-card {
+    background: var(--parchment);
+    border-radius: 28px;
+    box-shadow: 0 8px 32px var(--shadow);
+    padding: 2.2rem 2.8rem;
+    max-width: var(--page-max);
+    margin: 0.5rem auto 1.4rem auto;
+    min-height: 150px;
+    border: 2px solid var(--parchment2);
+}
+.beat-card.beat-visible {
+    animation: beatFadeIn 0.5s ease both;
+}
+@keyframes beatFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.beat-text {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 1.45rem;
+    line-height: 1.75;
+    color: var(--ink);
+    text-align: center;
+}
+
+/* ── Progress dots ──────────────────────────────────── */
+.progress-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0.4rem 0 1rem 0;
+    flex-wrap: wrap;
+}
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    transition: background 0.3s, transform 0.3s;
+}
+.dot-done    { background: var(--green); }
+.dot-current { background: var(--coral); transform: scale(1.4); }
+.dot-future  { background: var(--parchment2); }
+.progress-label {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    margin-left: 8px;
+    font-family: 'Nunito', sans-serif;
+}
+
+/* ── Loading indicator ──────────────────────────────── */
+.loading-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 3rem 1rem;
+    max-width: var(--page-max);
+    margin: 0 auto;
+}
+.loading-label {
+    font-family: 'Fredoka', sans-serif;
+    font-size: 1.3rem;
+    color: var(--coral);
+}
+.dots span {
+    display: inline-block;
+    font-size: 1.6rem;
+    color: var(--coral);
+    animation: dotBounce 1.2s ease-in-out infinite;
+}
+.dots span:nth-child(2) { animation-delay: 0.2s; }
+.dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+    0%, 80%, 100% { transform: translateY(0);    opacity: 0.4; }
+    40%            { transform: translateY(-8px); opacity: 1;   }
+}
+
+/* ── Option buttons ─────────────────────────────────── */
+.option-btn button:not(:disabled),
+button.option-btn:not(:disabled),
+button.secondary.option-btn:not(:disabled) {
+    background: var(--coral) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 50px !important;
+    font-family: 'Nunito', sans-serif !important;
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    padding: 0.9rem 1.5rem !important;
+    width: 100% !important;
+    max-width: var(--page-max) !important;
+    margin: 0 auto 0.55rem auto !important;
+    display: block !important;
+    box-shadow: 0 3px 10px var(--shadow) !important;
+    transition: background 0.15s, transform 0.12s, box-shadow 0.15s !important;
+    cursor: pointer !important;
+    min-height: 56px !important;
+}
+.option-btn button:hover {
+    background: var(--coral-dark) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 18px var(--shadow) !important;
+}
+.option-btn button:focus {
+    outline: none !important;
+    box-shadow: 0 3px 10px var(--shadow) !important;
+}
+.option-btn button:active  { transform: translateY(0) !important; }
+.option-btn button:disabled,
+.gradio-container .contain .option-btn button:disabled,
+.gradio-container.gradio-container-6-15-2 .contain .option-btn button:disabled {
+    display: none !important;
+    background: transparent !important;
+}
+
+/* ── Reset button ───────────────────────────────────── */
+.reset-btn button,
+button.reset-btn,
+button.secondary.reset-btn,
+button.sm.secondary.reset-btn {
+    background: transparent !important;
+    color: var(--ink-soft) !important;
+    border: 2px solid var(--ink-soft) !important;
+    border-radius: 50px !important;
+    font-size: 0.88rem !important;
+    padding: 0.4rem 1.2rem !important;
+    cursor: pointer !important;
+    transition: background 0.15s, color 0.15s !important;
+    margin-top: 0.6rem !important;
+    outline: none !important;
+    box-shadow: none !important;
+    width: auto !important;
+    max-width: fit-content !important;
+    display: inline-flex !important;
+    align-self: center !important;
+}
+.reset-btn button:hover,
+button.reset-btn:hover,
+button.sm.secondary.reset-btn:hover {
+    background: var(--ink-soft) !important;
+    color: var(--cream) !important;
+}
+.reset-btn button:focus,
+button.reset-btn:focus,
+button.sm.secondary.reset-btn:focus,
+.reset-btn button:focus-visible,
+button.reset-btn:focus-visible,
+button.sm.secondary.reset-btn:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* ── Ending screen ──────────────────────────────────── */
+#ending-section { animation: fadeIn 0.5s ease both; }
+
+.end-burst {
+    font-size: 4rem;
+    text-align: center;
+    animation: burstSpin 1s ease both;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+@keyframes burstSpin {
+    from { transform: scale(0) rotate(-30deg); opacity: 0; }
+    to   { transform: scale(1) rotate(0deg);   opacity: 1; }
+}
+
+#the-end-text {
+    font-family: 'Fredoka', sans-serif !important;
+    font-size: 2.2rem !important;
+    font-weight: 700 !important;
+    color: var(--green) !important;
+    text-align: center !important;
+    margin: 0.5rem 0 1.2rem 0 !important;
+    letter-spacing: 0.02em !important;
+}
+
+button#restart-big,
+button#restart-big.secondary {
+    background: var(--green) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 50px !important;
+    font-family: 'Fredoka', sans-serif !important;
+    font-size: 1.2rem !important;
+    font-weight: 600 !important;
+    padding: 0.9rem 2.5rem !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 14px var(--shadow) !important;
+    transition: background 0.15s, transform 0.12s !important;
+    display: block !important;
+    margin: 0.5rem auto !important;
+}
+button#restart-big:hover {
+    background: var(--green-dark) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* ── Accordion ──────────────────────────────────────── */
+.gr-accordion {
+    border-radius: 12px !important;
+    border: 1px solid var(--parchment2) !important;
+    margin-top: 1rem !important;
+}
+
+/* ── Keyframes ──────────────────────────────────────── */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Last-word rules (must stay at end of file) ─────── */
+/* Hide disabled option buttons — placed last so source order beats all !important duplicates */
+.option-btn button:disabled,
+button.option-btn:disabled,
+.gradio-container .contain .option-btn button:disabled,
+.gradio-container.gradio-container-6-15-2 .contain .option-btn button:disabled {
+    display: none !important;
+}
