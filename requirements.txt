@@ -1,3 +1,8 @@
 gradio
 llama-cpp-python
 huggingface_hub
+diffusers
+transformers
+accelerate
+torch --extra-index-url https://download.pytorch.org/whl/cpu
+Pillow
