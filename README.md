@@ -5,7 +5,7 @@ colorFrom: yellow
 colorTo: pink
 sdk: gradio
 python_version: "3.12"
-app_file: app_v2.py
+app_file: app.py
 pinned: false
 ---
 
@@ -51,7 +51,7 @@ Two models, fully local:
 
 ```bash
 pip install -r requirements.txt
-python app_v2.py
+python app.py
 ```
 
 Both models download automatically from Hugging Face on first run (~2.7 GB total).
@@ -59,7 +59,7 @@ Both models download automatically from Hugging Face on first run (~2.7 GB total
 ### Alternate text model
 
 ```bash
-MODEL_REPO=Qwen/Qwen3-4B-GGUF MODEL_FILE=Qwen3-4B-Q4_K_M.gguf python app_v2.py
+MODEL_REPO=Qwen/Qwen3-4B-GGUF MODEL_FILE=Qwen3-4B-Q4_K_M.gguf python app.py
 ```
 
 ## Configuration
@@ -75,12 +75,12 @@ MODEL_REPO=Qwen/Qwen3-4B-GGUF MODEL_FILE=Qwen3-4B-Q4_K_M.gguf python app_v2.py
 
 | File | Purpose |
 |------|---------|
-| `app_v2.py` | Main Gradio app (v2, with images) |
+| `app.py` | Main Gradio app (v2, with images) |
 | `engine_v2.py` | Story logic + image-prompt builder |
 | `model.py` | llama-cpp-python wrapper |
 | `image_model_v2.py` | Ghibli-Diffusion pipeline |
 | `styles_v2.css` | Custom storybook theme |
-| `app.py` | Original v1 (text-only) |
+| `app_v1.py` | Original v1 (text-only) |
 
 ## Privacy
 

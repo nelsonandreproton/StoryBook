@@ -1,6 +1,7 @@
 """
-StoryForge v2 — Gradio app with per-beat Ghibli-Diffusion images.
-State-driven single page: setup -> story -> ending.
+StoryForge — Gradio app.
+State-driven single page: setup → story → ending.
+All AI runs in-process via model.py (no cloud APIs).
 
 Output list (all handlers yield this shape, index-stable):
   0  story_state       gr.State
@@ -12,16 +13,12 @@ Output list (all handlers yield this shape, index-stable):
   6  progress_html     HTML    value
   7..12  option_btns[0..5]
   13 full_story_md     Markdown value
-  14 beat_image        Image   value   (NEW — always last)
 """
 
 import html as _html
-import io
-import threading
 import gradio as gr
-from engine_v2 import StoryState, SYSTEM, build_prompt, parse_response, apply_turn, build_image_prompt
+from engine import StoryState, SYSTEM, build_prompt, parse_response, apply_turn
 import model as story_model
-import image_model_v2 as img_model
 
 THEMES = [
     ("🦊", "A brave little fox",      "courage & friendship"),
@@ -34,7 +31,6 @@ THEMES = [
 
 MAX_OPTIONS = 6
 
-
 # ── HTML helpers ──────────────────────────────────────────────────────────────
 
 def _beat_html(text: str) -> str:
@@ -45,7 +41,7 @@ def _beat_html(text: str) -> str:
 def _loading_html() -> str:
     return """
 <div class="loading-wrap">
-  <span class="loading-label">&#9999;&#65039; Writing your story</span>
+  <span class="loading-label">✍️ Writing your story</span>
   <span class="dots"><span>.</span><span>.</span><span>.</span></span>
 </div>
 """
@@ -61,12 +57,8 @@ def _progress_html(moment: int, total: int) -> str:
 
 def _end_html(beat: str) -> str:
     escaped = _html.escape(beat)
-    return (f'<div class="end-burst">&#10024;</div>'
+    return (f'<div class="end-burst">✨</div>'
             f'<div class="beat-card beat-visible"><div class="beat-text">{escaped}</div></div>')
-
-
-def _shimmer_html() -> str:
-    return '<div class="image-placeholder"></div>'
 
 
 # ── Screen helpers ────────────────────────────────────────────────────────────
@@ -83,22 +75,21 @@ def _opt(options: list, disabled: bool = False) -> list:
 
 def _setup_screen(state, total: int = 10):
     return (state, gr.update(visible=True), gr.update(visible=False), gr.update(visible=False),
-            "", "", "", *_opt([]), "", gr.update(value=None, visible=False))
+            "", "", "", *_opt([]), "")
 
 
-def _story_screen(state, beat, options, moment, total, loading=False, image=gr.update(value=None)):
+def _story_screen(state, beat, options, moment, total, loading=False):
     return (state, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False),
             _loading_html() if loading else _beat_html(beat),
             "",
             _progress_html(moment, total),
             *_opt([] if loading else options),
-            "",
-            image)
+            "")
 
 
-def _ending_screen(state, beat, full_story, total, image=gr.update(value=None)):
+def _ending_screen(state, beat, full_story, total):
     return (state, gr.update(visible=False), gr.update(visible=False), gr.update(visible=True),
-            _end_html(beat), "", _progress_html(total, total), *_opt([]), full_story, image)
+            _end_html(beat), "", _progress_html(total, total), *_opt([]), full_story)
 
 
 # ── State helpers ─────────────────────────────────────────────────────────────
@@ -121,47 +112,21 @@ def _generate_beat(s: StoryState) -> tuple:
     return s, data["beat"], data.get("options", [])
 
 
-def _generate_image_threaded(beat: str, hero: str, world: str) -> list:
-    """Generate image in a thread; return [pil_image] or [] on failure."""
-    result = []
-    def _run():
-        try:
-            img_prompt = build_image_prompt(beat, hero, world)
-            png_bytes = img_model.generate_image(img_prompt)
-            from PIL import Image
-            result.append(Image.open(io.BytesIO(png_bytes)))
-        except Exception:
-            pass
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join()
-    return result
-
-
 # ── Event handlers ────────────────────────────────────────────────────────────
 
 def start_story(theme: str, total_moments: int, num_options: int, state: dict):
     total, num = int(total_moments), int(num_options)
     s = StoryState(theme=theme, total_moments=total, num_options=num, moment=0)
-
-    # Yield 1: loading state, no image
     yield _story_screen(state, "", [], 1, total, loading=True)
-
     s, beat, options = _generate_beat(s)
     sd = s.to_dict()
     sd["_options"] = options
     sd["_current_beat"] = beat
-
-    # Yield 2: text + options, no image yet (image generates next)
     yield _story_screen(sd, beat, options, 1, total)
-
-    # Yield 3: image arrives (or nothing if generation failed)
-    imgs = _generate_image_threaded(beat, s.hero, s.world)
-    if imgs:
-        yield _story_screen(sd, beat, options, 1, total, image=gr.update(value=imgs[0], visible=True))
 
 
 def on_theme_selected(theme_val: str, total_moments: int, num_options: int, state: dict):
+    """Called when the hidden textbox changes value (a theme card was clicked)."""
     if not theme_val:
         return
     yield from start_story(theme_val, total_moments, num_options, state)
@@ -174,38 +139,19 @@ def choose_option(choice_idx: int, state: dict):
     chosen = options[choice_idx] if choice_idx < len(options) else "Continue"
     s.history = list(s.history) + [{"beat": current_beat, "choice": chosen}]
     s.moment += 1
-
-    # Yield 1: loading (keep previous image visible while generating)
     yield _story_screen(state, current_beat, options, s.moment, s.total_moments, loading=True)
-
     s, beat, new_options = _generate_beat(s)
     is_final = s.moment >= s.total_moments - 1
     sd = s.to_dict()
     sd["_options"] = new_options
     sd["_current_beat"] = beat
-
     if is_final or not new_options:
         s.finished = True
         full_beats = [h["beat"] for h in s.history] + [beat]
         full_story = "\n\n".join(f"**Beat {i+1}:** {b}" for i, b in enumerate(full_beats))
-
-        # Yield 2: ending text, no image yet
         yield _ending_screen(s.to_dict(), beat, full_story, s.total_moments)
-
-        # Yield 3: ending image
-        imgs = _generate_image_threaded(beat, s.hero, s.world)
-        if imgs:
-            yield _ending_screen(s.to_dict(), beat, full_story, s.total_moments,
-                                  image=gr.update(value=imgs[0], visible=True))
     else:
-        # Yield 2: text + options, no image yet
         yield _story_screen(sd, beat, new_options, s.moment + 1, s.total_moments)
-
-        # Yield 3: image
-        imgs = _generate_image_threaded(beat, s.hero, s.world)
-        if imgs:
-            yield _story_screen(sd, beat, new_options, s.moment + 1, s.total_moments,
-                                 image=gr.update(value=imgs[0], visible=True))
 
 
 def reset_story():
@@ -214,14 +160,17 @@ def reset_story():
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 
-with open("styles_v2.css", encoding="utf-8") as _f:
+# NOTE: css= on gr.Blocks() inlines the stylesheet as a <style> tag — confirmed
+# working in Gradio 6. The deprecation warning suggests launch(css=) but that
+# path does not actually inject the styles.
+with open("styles.css", encoding="utf-8") as _f:
     _CSS = _f.read()
 
 with gr.Blocks(css=_CSS, title="StoryForge") as demo:
 
     story_state = gr.State({})
 
-    gr.HTML('<h1 id="app-title">&#128214; StoryForge</h1>')
+    gr.HTML('<h1 id="app-title">📖 StoryForge</h1>')
     gr.HTML('<p id="app-tagline">A magical branching adventure — just for you</p>')
 
     # ── Setup ──────────────────────────────────────────────────────────────
@@ -235,8 +184,11 @@ with gr.Blocks(css=_CSS, title="StoryForge") as demo:
 
         gr.HTML('<p id="themes-label">Choose your adventure:</p>')
 
+        # Message bus: visible=True so Gradio renders it, CSS hides it visually
         theme_bus = gr.Textbox(value="", visible=True, elem_id="theme-bus", label="")
 
+        # Theme cards as plain HTML divs — JS writes to the hidden textbox
+        # then dispatches an input event so Gradio picks it up
         cards_html = '<div class="theme-grid">'
         for emoji, title, subtitle in THEMES:
             theme_val = f"{emoji} {title}"
@@ -264,38 +216,27 @@ with gr.Blocks(css=_CSS, title="StoryForge") as demo:
     status_html   = gr.HTML("", elem_id="status-text")
     beat_display  = gr.HTML("", elem_id="beat-display")
 
-    # ── Beat image (hidden until first image arrives) ───────────────────────
-    beat_image = gr.Image(
-        value=None,
-        visible=False,
-        show_label=False,
-        type="pil",
-        interactive=False,
-        buttons=[],
-        elem_id="beat-image-wrap",
-    )
-
     # ── Story section ───────────────────────────────────────────────────────
     with gr.Column(elem_id="story-section", visible=False) as story_col:
         option_btns = []
         for i in range(MAX_OPTIONS):
             btn = gr.Button(f"Option {i+1}", visible=False, elem_classes=["option-btn"])
             option_btns.append(btn)
-        reset_btn_story = gr.Button("Start over", elem_classes=["reset-btn"], size="sm")
+        reset_btn_story = gr.Button("↩ Start over", elem_classes=["reset-btn"], size="sm")
 
     # ── Ending section ──────────────────────────────────────────────────────
     with gr.Column(elem_id="ending-section", visible=False) as ending_col:
-        gr.HTML('<p id="the-end-text">&#10024; The End &#10024;</p>')
-        with gr.Accordion("Read the whole story", open=False):
+        gr.HTML('<p id="the-end-text">✨ The End ✨</p>')
+        with gr.Accordion("📜 Read the whole story", open=False):
             full_story_text = gr.Markdown("")
-        reset_btn_end = gr.Button("Start a new adventure", elem_id="restart-big")
+        reset_btn_end = gr.Button("🌟 Start a new adventure", elem_id="restart-big")
 
     # ── Output list ────────────────────────────────────────────────────────
     ALL_OUTPUTS = (
         [story_state, setup_col, story_col, ending_col,
          beat_display, status_html, progress_html]
         + option_btns
-        + [full_story_text, beat_image]
+        + [full_story_text]
     )
 
     # ── Wire theme bus ──────────────────────────────────────────────────────
@@ -315,8 +256,8 @@ with gr.Blocks(css=_CSS, title="StoryForge") as demo:
     reset_btn_story.click(fn=reset_story, inputs=[], outputs=ALL_OUTPUTS)
     reset_btn_end.click(fn=reset_story, inputs=[], outputs=ALL_OUTPUTS)
 
-    # ── Override styles injected late ──────────────────────────────────────
-    with open("styles_v2.css", encoding="utf-8") as _sf:
+    # ── Override styles injected late (beats Gradio's StreamingBar CSS) ────
+    with open("styles.css", encoding="utf-8") as _sf:
         gr.HTML(f"<style>{_sf.read()}</style>")
 
 
