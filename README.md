@@ -1,51 +1,50 @@
 ---
 title: StoryForge
 emoji: 📖
-colorFrom: yellow
-colorTo: pink
+colorFrom: orange
+colorTo: purple
 sdk: gradio
-python_version: "3.12"
+sdk_version: 4.44.0
 app_file: app.py
-pinned: false
+pinned: true
+license: mit
 ---
 
-# StoryForge 📖
+# 📖 StoryForge
 
-A branching, illustrated storybook web app for young children (ages 4–8). Pick a theme, make choices, and watch your unique adventure unfold — complete with hand-drawn Ghibli-style illustrations generated for every beat.
+An interactive branching picture-book adventure for children (age 4–8).
 
-All AI runs **entirely in-process**. No cloud APIs. No data sent anywhere. Just stories.
+## Features
 
-## Hackathon tracks & badges
+- **Branching story** — 2–6 choices per moment, up to 15 moments
+- **Ghibli-style illustrations** — one image generated per beat
+- **Character consistency** — IP-Adapter keeps your hero looking the same throughout
+- **TTS narration** — each beat is read aloud (Microsoft Edge neural voice)
+- **Voice input** — speak your choice instead of clicking
+- **Ambient music** — procedural background audio matched to your theme
+- **PDF export** — download your illustrated story as a printable picture book
+- **Custom hero** — name and describe your own hero before the story begins
 
-**Track:** 🍄 An Adventure in Thousand Token Wood — *something delightful that wouldn't exist without AI*
+## HF Space secrets
 
-| Badge | How StoryForge earns it |
-|-------|------------------------|
-| 🔌 **Off the Grid** | Zero cloud LLM calls; text model runs in-process via `llama-cpp-python` |
-| 🎨 **Off-Brand** | Custom storybook CSS — Fredoka/Nunito fonts, parchment palette, animated beat cards |
-| 🦙 **Llama Champion** | Text generation via llama.cpp runtime (Qwen3-1.7B Q4_K_M GGUF) |
-| 🎯 **Well-Tuned** | Illustrations use `nitrosocke/Ghibli-Diffusion` — a fine-tuned Stable Diffusion 1.5 |
+Add these in your Space settings → **Secrets**:
 
-## How it works
+| Secret | Where to get it |
+|---|---|
+| `MODAL_TOKEN_ID` | `modal token new` → token ID |
+| `MODAL_TOKEN_SECRET` | `modal token new` → token secret |
 
-1. Choose a story theme (brave fox, sleepy moon, shy dragon…)
-2. Read the opening beat of your adventure
-3. A Ghibli-style illustration generates in the background — fades in when ready
-4. Tap a choice to steer the story
-5. Repeat until you reach a happy ending ✨
+Without Modal, the app falls back to local CPU inference (slower, but still works).
 
-### Architecture
+## Deploy the Modal backend
 
-Two models, fully local:
+```bash
+pip install modal
+modal token new
+modal deploy modal_inference.py
+```
 
-| Model | Role | Size |
-|-------|------|------|
-| Qwen3-1.7B Q4_K_M (GGUF) | Story text & branching choices | ~1 GB |
-| nitrosocke/Ghibli-Diffusion (SD 1.5) | Per-beat illustrations | ~1.7 GB |
-
-**Text coherence:** the full `StoryState` (hero, world, established facts, history) is re-injected into every prompt — the model never needs to "remember" anything.
-
-**Non-blocking images:** every beat yields text and options immediately; the illustration generates in a background thread and fades in after ~60–90s on CPU.
+This deploys Qwen3-4B (text) and Ghibli-Diffusion + IP-Adapter (images) as serverless GPU functions.
 
 ## Run locally
 
@@ -54,34 +53,26 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Both models download automatically from Hugging Face on first run (~2.7 GB total).
+## Architecture
 
-### Alternate text model
-
-```bash
-MODEL_REPO=Qwen/Qwen3-4B-GGUF MODEL_FILE=Qwen3-4B-Q4_K_M.gguf python app.py
-```
+| Layer | File | Backend |
+|---|---|---|
+| Text generation | `model.py` | Modal A10G → Qwen3-4B · fallback: local GGUF |
+| Image generation | `image_model_v2.py` | Modal T4 → Ghibli-Diffusion + IP-Adapter · fallback: local CPU |
+| TTS narration | `tts.py` | edge-tts (no GPU, requires internet) |
+| Voice input STT | `stt.py` | Modal T4 → Whisper · fallback: transformers whisper-tiny |
+| Ambient audio | `ambient.py` | numpy procedural, CPU |
+| PDF export | `pdf_export.py` | reportlab, CPU |
+| Story engine | `engine_v2.py` | Pure Python, stateless |
+| UI | `app.py` | Gradio |
 
 ## Configuration
 
 | Env var | Default | Description |
-|---------|---------|-------------|
-| `MODEL_REPO` | `Qwen/Qwen3-1.7B-GGUF` | HF repo for the GGUF text model |
-| `MODEL_FILE` | `Qwen3-1.7B-Q4_K_M.gguf` | Filename within that repo |
-| `N_CTX` | `4096` | Context window size |
-| `N_THREADS` | `cpu_count` | Inference threads |
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `app.py` | Main Gradio app (v2, with images) |
-| `engine_v2.py` | Story logic + image-prompt builder |
-| `model.py` | llama-cpp-python wrapper |
-| `image_model_v2.py` | Ghibli-Diffusion pipeline |
-| `styles_v2.css` | Custom storybook theme |
-| `app_v1.py` | Original v1 (text-only) |
-
-## Privacy
-
-No network calls during inference. The only outbound requests are the one-time model downloads from Hugging Face Hub.
+|---|---|---|
+| `MODEL_REPO` | `Qwen/Qwen3-1.7B-GGUF` | GGUF text model (local fallback only) |
+| `MODEL_FILE` | `Qwen3-1.7B-Q8_0.gguf` | Filename within that repo |
+| `MODAL_APP_NAME` | `storyforge` | Name used when deploying to Modal |
+| `TTS_VOICE` | `en-US-JennyNeural` | edge-tts voice |
+| `N_CTX` | `4096` | Context window (local fallback) |
+| `N_THREADS` | `cpu_count` | Inference threads (local fallback) |
