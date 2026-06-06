@@ -448,6 +448,50 @@ button#restart-big:hover {
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Hero input ─────────────────────────────────────── */
+#hero-input { margin-bottom: 1.2rem !important; }
+#hero-input textarea,
+#hero-input input {
+    background: var(--parchment) !important;
+    border: 2px solid var(--parchment2) !important;
+    border-radius: 12px !important;
+    font-family: 'Nunito', sans-serif !important;
+    font-size: 0.98rem !important;
+    color: var(--ink) !important;
+    padding: 0.6rem 1rem !important;
+}
+#hero-input textarea:focus,
+#hero-input input:focus {
+    border-color: var(--coral) !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* ── Voice row ───────────────────────────────────────── */
+#voice-row {
+    margin-top: 0.8rem !important;
+    max-width: var(--page-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+#mic-input { border-radius: 12px !important; }
+
+/* ── Audio players (hidden, autoplay) ───────────────── */
+#beat-audio,
+#ambient-audio {
+    display: none !important;
+}
+
+/* ── PDF download ────────────────────────────────────── */
+#pdf-download {
+    max-width: var(--page-max) !important;
+    margin: 0.8rem auto !important;
+    background: var(--parchment) !important;
+    border: 2px solid var(--gold) !important;
+    border-radius: 14px !important;
+    padding: 0.8rem 1.2rem !important;
+}
+
 /* ── Last-word rules (must stay at end of file) ─────── */
 /* Hide disabled option buttons — placed last so source order beats all !important duplicates */
 .option-btn button:disabled,

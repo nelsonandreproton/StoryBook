@@ -1,25 +1,40 @@
 """
-StoryForge v2 — Gradio app with per-beat Ghibli-Diffusion images.
-State-driven single page: setup -> story -> ending.
+StoryForge — Gradio app.
 
-Output list (all handlers yield this shape, index-stable):
-  0  story_state       gr.State
-  1  setup_col         Column  visible
-  2  story_col         Column  visible
-  3  ending_col        Column  visible
-  4  beat_display      HTML    value
-  5  status_html       HTML    value   (unused — kept for index stability)
-  6  progress_html     HTML    value
-  7..12  option_btns[0..5]
-  13 full_story_md     Markdown value
-  14 beat_image        Image   value   (NEW — always last)
+Output tuple (18 elements, index-stable across all handlers):
+  0  story_state
+  1  setup_col
+  2  story_col
+  3  ending_col
+  4  beat_display
+  5  status_html       (kept for index stability)
+  6  progress_html
+  7-12  option_btns[0..5]
+  13 full_story_md
+  14 beat_image
+  15 beat_audio        (TTS narration, edge-tts MP3)
+  16 ambient_audio     (background music, numpy WAV)
+  17 pdf_file          (downloadable PDF at story end)
 """
 
 import html as _html
 import io
 import threading
 import gradio as gr
-from engine_v2 import StoryState, SYSTEM, build_prompt, parse_response, apply_turn, build_image_prompt
+
+import ambient
+import pdf_export
+import stt
+import tts
+from engine_v2 import (
+    StoryState,
+    SYSTEM,
+    apply_turn,
+    build_image_prompt,
+    build_prompt,
+    parse_response,
+)
+import image_model_v2 as img_model
 import model as story_model
 
 THEMES = [
@@ -30,24 +45,23 @@ THEMES = [
     ("🎈", "The runaway balloon",      "adventure & freedom"),
     ("🐉", "The shy dragon",           "belonging & bravery"),
 ]
-
 MAX_OPTIONS = 6
 
 
 # ── HTML helpers ──────────────────────────────────────────────────────────────
 
 def _beat_html(text: str) -> str:
-    escaped = _html.escape(text)
-    return f'<div class="beat-card beat-visible"><div class="beat-text">{escaped}</div></div>'
+    esc = _html.escape(text)
+    return f'<div class="beat-card beat-visible"><div class="beat-text">{esc}</div></div>'
 
 
 def _loading_html() -> str:
-    return """
-<div class="loading-wrap">
-  <span class="loading-label">&#9999;&#65039; Writing your story</span>
-  <span class="dots"><span>.</span><span>.</span><span>.</span></span>
-</div>
-"""
+    return (
+        '<div class="loading-wrap">'
+        '<span class="loading-label">&#9999;&#65039; Writing your story</span>'
+        '<span class="dots"><span>.</span><span>.</span><span>.</span></span>'
+        "</div>"
+    )
 
 
 def _progress_html(moment: int, total: int) -> str:
@@ -55,20 +69,21 @@ def _progress_html(moment: int, total: int) -> str:
         f'<span class="dot dot-{"done" if i < moment else "current" if i == moment else "future"}"></span>'
         for i in range(1, total + 1)
     )
-    return f'<div class="progress-wrap">{dots}<span class="progress-label">Moment {moment} of {total}</span></div>'
+    return (
+        f'<div class="progress-wrap">{dots}'
+        f'<span class="progress-label">Moment {moment} of {total}</span></div>'
+    )
 
 
 def _end_html(beat: str) -> str:
-    escaped = _html.escape(beat)
-    return (f'<div class="end-burst">&#10024;</div>'
-            f'<div class="beat-card beat-visible"><div class="beat-text">{escaped}</div></div>')
+    esc = _html.escape(beat)
+    return (
+        '<div class="end-burst">&#10024;</div>'
+        f'<div class="beat-card beat-visible"><div class="beat-text">{esc}</div></div>'
+    )
 
 
-def _shimmer_html() -> str:
-    return '<div class="image-placeholder"></div>'
-
-
-# ── Screen helpers ────────────────────────────────────────────────────────────
+# ── Screen helpers — every handler yields exactly these 18 values ─────────────
 
 def _opt(options: list, disabled: bool = False) -> list:
     out = []
@@ -80,37 +95,77 @@ def _opt(options: list, disabled: bool = False) -> list:
     return out
 
 
-def _setup_screen(state, total: int = 10):
-    return (state, gr.update(visible=True), gr.update(visible=False), gr.update(visible=False),
-            "", "", "", *_opt([]), "", gr.update(value=None, visible=False))
+def _setup_screen(state):
+    return (
+        state,
+        gr.update(visible=True),
+        gr.update(visible=False),
+        gr.update(visible=False),
+        "", "", "",
+        *_opt([]),
+        "",
+        gr.update(value=None, visible=False),   # beat_image
+        gr.update(value=None, visible=False),   # beat_audio
+        gr.update(value=None, visible=False),   # ambient_audio
+        gr.update(visible=False),               # pdf_file
+    )
 
 
-def _story_screen(state, beat, options, moment, total, loading=False, image=gr.update(value=None)):
-    return (state, gr.update(visible=False), gr.update(visible=True), gr.update(visible=False),
-            _loading_html() if loading else _beat_html(beat),
-            "",
-            _progress_html(moment, total),
-            *_opt([] if loading else options),
-            "",
-            image)
+def _story_screen(
+    state, beat, options, moment, total,
+    *,
+    loading=False,
+    image=None,
+    audio=None,
+    ambient_val=None,
+):
+    return (
+        state,
+        gr.update(visible=False),
+        gr.update(visible=True),
+        gr.update(visible=False),
+        _loading_html() if loading else _beat_html(beat),
+        "",
+        _progress_html(moment, total),
+        *_opt([] if loading else options),
+        "",
+        gr.update() if image is None else gr.update(value=image, visible=True),
+        gr.update() if audio is None else gr.update(value=audio, autoplay=True, visible=True),
+        gr.update() if ambient_val is None else gr.update(value=ambient_val, autoplay=True, visible=True),
+        gr.update(visible=False),
+    )
 
 
-def _ending_screen(state, beat, full_story, total, image=gr.update(value=None)):
-    return (state, gr.update(visible=False), gr.update(visible=False), gr.update(visible=True),
-            _end_html(beat), "", _progress_html(total, total), *_opt([]), full_story, image)
+def _ending_screen(state, beat, full_story, total, *, image=None, audio=None, pdf=None):
+    return (
+        state,
+        gr.update(visible=False),
+        gr.update(visible=False),
+        gr.update(visible=True),
+        _end_html(beat),
+        "",
+        _progress_html(total, total),
+        *_opt([]),
+        full_story,
+        gr.update() if image is None else gr.update(value=image, visible=True),
+        gr.update() if audio is None else gr.update(value=audio, autoplay=True, visible=True),
+        gr.update(),                            # ambient_audio — keep playing
+        gr.update() if pdf is None else gr.update(value=pdf, visible=True),
+    )
 
 
-# ── State helpers ─────────────────────────────────────────────────────────────
+# ── State helper ──────────────────────────────────────────────────────────────
 
 def _state_from(d: dict) -> StoryState:
     return StoryState.from_dict({k: v for k, v in d.items() if not k.startswith("_")})
 
 
+# ── Core generation ───────────────────────────────────────────────────────────
+
 def _generate_beat(s: StoryState) -> tuple:
     prompt = build_prompt(s)
     is_final = (s.moment + 1) >= s.total_moments
-    max_tok = 1024 if is_final else 512
-    raw = story_model.generate(SYSTEM, prompt, max_tokens=max_tok)
+    raw = story_model.generate(SYSTEM, prompt, max_tokens=1024 if is_final else 512)
     data = parse_response(raw)
     if not is_final and not data.get("options"):
         raw2 = story_model.generate(SYSTEM, prompt, max_tokens=512)
@@ -120,51 +175,77 @@ def _generate_beat(s: StoryState) -> tuple:
     return s, data["beat"], data.get("options", [])
 
 
-def _generate_image_threaded(beat: str, hero: str, world: str) -> list:
-    """Generate image in a thread; return [pil_image] or [] on failure."""
-    result = []
-    def _run():
-        try:
-            import image_model_v2 as img_model
-            from PIL import Image
-            img_prompt = build_image_prompt(beat, hero, world)
-            png_bytes = img_model.generate_image(img_prompt)
-            result.append(Image.open(io.BytesIO(png_bytes)))
-        except Exception:
-            pass
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join()
-    return result
+def _generate_image_bytes(beat: str, hero: str, world: str, ref: bytes = None) -> bytes | None:
+    try:
+        prompt = build_image_prompt(beat, hero, world)
+        return img_model.generate_image(prompt, ref)
+    except Exception:
+        return None
+
+
+def _pil_from_bytes(b: bytes):
+    from PIL import Image
+    return Image.open(io.BytesIO(b))
+
+
+def _parallel_image_and_audio(beat, hero, world, ref_bytes=None):
+    """Run image gen + TTS in parallel threads; returns (img_bytes, audio_path)."""
+    img_result: list = [None]
+    aud_result: list = [None]
+
+    def _img():
+        img_result[0] = _generate_image_bytes(beat, hero, world, ref_bytes)
+
+    def _aud():
+        aud_result[0] = tts.generate_speech(beat)
+
+    t1 = threading.Thread(target=_img, daemon=True)
+    t2 = threading.Thread(target=_aud, daemon=True)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+    return img_result[0], aud_result[0]
 
 
 # ── Event handlers ────────────────────────────────────────────────────────────
 
-def start_story(theme: str, total_moments: int, num_options: int, state: dict):
+def start_story(theme, total_moments, num_options, custom_hero, state):
     total, num = int(total_moments), int(num_options)
     s = StoryState(theme=theme, total_moments=total, num_options=num, moment=0)
+    if custom_hero and custom_hero.strip():
+        s.hero = custom_hero.strip()
 
-    # Yield 1: loading state, no image
-    yield _story_screen(state, "", [], 1, total, loading=True)
+    amb = ambient.generate_ambient(theme)
+
+    # ① Loading screen with ambient music
+    yield _story_screen(state, "", [], 1, total, loading=True, ambient_val=amb)
 
     s, beat, options = _generate_beat(s)
     sd = s.to_dict()
     sd["_options"] = options
     sd["_current_beat"] = beat
+    sd["_beat_images"] = []
 
-    # Yield 2: text + options, no image yet (image generates next)
+    # ② Text + choices
     yield _story_screen(sd, beat, options, 1, total)
 
-    # Yield 3: image arrives (or nothing if generation failed)
-    imgs = _generate_image_threaded(beat, s.hero, s.world)
-    if imgs:
-        yield _story_screen(sd, beat, options, 1, total, image=gr.update(value=imgs[0], visible=True))
+    # ③ Image + TTS in parallel
+    img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world)
+    if img_bytes:
+        sd["_reference_image"] = img_bytes
+        sd["_beat_images"] = [img_bytes]
+        yield _story_screen(
+            sd, beat, options, 1, total,
+            image=_pil_from_bytes(img_bytes),
+            audio=audio_path,
+        )
+    elif audio_path:
+        yield _story_screen(sd, beat, options, 1, total, audio=audio_path)
 
 
-def on_theme_selected(theme_val: str, total_moments: int, num_options: int, state: dict):
+def on_theme_selected(theme_val, total_moments, num_options, custom_hero, state):
     if not theme_val:
         return
-    yield from start_story(theme_val, total_moments, num_options, state)
+    yield from start_story(theme_val, total_moments, num_options, custom_hero, state)
 
 
 def choose_option(choice_idx: int, state: dict):
@@ -175,7 +256,11 @@ def choose_option(choice_idx: int, state: dict):
     s.history = list(s.history) + [{"beat": current_beat, "choice": chosen}]
     s.moment += 1
 
-    # Yield 1: loading (keep previous image visible while generating)
+    # Keep accumulated images across beats
+    beat_images = list(state.get("_beat_images", []))
+    ref_bytes   = state.get("_reference_image")
+
+    # ① Loading (keep previous image)
     yield _story_screen(state, current_beat, options, s.moment, s.total_moments, loading=True)
 
     s, beat, new_options = _generate_beat(s)
@@ -183,29 +268,68 @@ def choose_option(choice_idx: int, state: dict):
     sd = s.to_dict()
     sd["_options"] = new_options
     sd["_current_beat"] = beat
+    sd["_reference_image"] = ref_bytes
+    sd["_beat_images"] = beat_images
 
     if is_final or not new_options:
         s.finished = True
         full_beats = [h["beat"] for h in s.history] + [beat]
-        full_story = "\n\n".join(f"**Beat {i+1}:** {b}" for i, b in enumerate(full_beats))
+        full_story = "\n\n".join(f"**Moment {i+1}:** {b}" for i, b in enumerate(full_beats))
 
-        # Yield 2: ending text, no image yet
-        yield _ending_screen(s.to_dict(), beat, full_story, s.total_moments)
+        # ② Ending text
+        yield _ending_screen(sd, beat, full_story, s.total_moments)
 
-        # Yield 3: ending image
-        imgs = _generate_image_threaded(beat, s.hero, s.world)
-        if imgs:
-            yield _ending_screen(s.to_dict(), beat, full_story, s.total_moments,
-                                  image=gr.update(value=imgs[0], visible=True))
+        # ③ Image + TTS
+        img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world, ref_bytes)
+        if img_bytes:
+            beat_images.append(img_bytes)
+            sd["_beat_images"] = beat_images
+        yield _ending_screen(
+            sd, beat, full_story, s.total_moments,
+            image=_pil_from_bytes(img_bytes) if img_bytes else None,
+            audio=audio_path,
+        )
+
+        # ④ PDF
+        try:
+            pdf_path = pdf_export.build_pdf(
+                theme=s.theme,
+                hero=s.hero,
+                world=s.world,
+                beats=full_beats,
+                images=sd["_beat_images"],
+            )
+            yield _ending_screen(sd, beat, full_story, s.total_moments, pdf=pdf_path)
+        except Exception:
+            pass
+
     else:
-        # Yield 2: text + options, no image yet
+        # ② Text + choices
         yield _story_screen(sd, beat, new_options, s.moment + 1, s.total_moments)
 
-        # Yield 3: image
-        imgs = _generate_image_threaded(beat, s.hero, s.world)
-        if imgs:
-            yield _story_screen(sd, beat, new_options, s.moment + 1, s.total_moments,
-                                 image=gr.update(value=imgs[0], visible=True))
+        # ③ Image + TTS
+        img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world, ref_bytes)
+        if img_bytes:
+            beat_images.append(img_bytes)
+            sd["_beat_images"] = beat_images
+        yield _story_screen(
+            sd, beat, new_options, s.moment + 1, s.total_moments,
+            image=_pil_from_bytes(img_bytes) if img_bytes else None,
+            audio=audio_path,
+        )
+
+
+def on_voice_input(audio_tuple, state: dict):
+    if audio_tuple is None:
+        return
+    options = state.get("_options", [])
+    if not options:
+        return
+    text = stt.transcribe(audio_tuple)
+    if text:
+        idx = stt.match_option(text, options)
+        if idx is not None:
+            yield from choose_option(idx, state)
 
 
 def reset_story():
@@ -233,13 +357,21 @@ with gr.Blocks(css=_CSS, title="StoryForge") as demo:
             options_slider = gr.Slider(2, 6, value=5, step=1,
                                        label="How many choices each turn?")
 
+        hero_input = gr.Textbox(
+            value="",
+            placeholder="e.g. Luna, a small girl with silver hair and a red cape",
+            label="Your hero (optional — leave blank to let the story invent one)",
+            elem_id="hero-input",
+            max_lines=1,
+        )
+
         gr.HTML('<p id="themes-label">Choose your adventure:</p>')
 
         theme_bus = gr.Textbox(value="", visible=True, elem_id="theme-bus", label="")
 
         cards_html = '<div class="theme-grid">'
         for emoji, title, subtitle in THEMES:
-            theme_val = f"{emoji} {title}"
+            tv = f"{emoji} {title}"
             cards_html += (
                 f'<div class="theme-card" onclick="'
                 f'(function(){{'
@@ -247,8 +379,9 @@ with gr.Blocks(css=_CSS, title="StoryForge") as demo:
                 f'var tb=wrap?wrap.querySelector(\'textarea,input[type=text]\'):null;'
                 f'if(!tb){{tb=document.querySelector(\'[data-testid=textbox]\');}} '
                 f'if(!tb)return;'
-                f'var nativeSet=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,\'value\')||Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,\'value\');'
-                f'nativeSet.set.call(tb,{repr(theme_val)});'
+                f'var nativeSet=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,\'value\')'
+                f'||Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,\'value\');'
+                f'nativeSet.set.call(tb,{repr(tv)});'
                 f'tb.dispatchEvent(new Event(\'input\',{{bubbles:true}}));'
                 f'}})()">'
                 f'<span class="tc-emoji">{emoji}</span>'
@@ -256,31 +389,50 @@ with gr.Blocks(css=_CSS, title="StoryForge") as demo:
                 f'<span class="tc-sub">{subtitle}</span>'
                 f'</div>'
             )
-        cards_html += '</div>'
+        cards_html += "</div>"
         gr.HTML(cards_html)
 
-    # ── Shared content area ─────────────────────────────────────────────────
+    # ── Shared content ─────────────────────────────────────────────────────
     progress_html = gr.HTML("", elem_id="progress-text")
     status_html   = gr.HTML("", elem_id="status-text")
     beat_display  = gr.HTML("", elem_id="beat-display")
 
-    # ── Beat image (hidden until first image arrives) ───────────────────────
     beat_image = gr.Image(
-        value=None,
-        visible=False,
-        show_label=False,
-        type="pil",
-        interactive=False,
-        buttons=[],
+        value=None, visible=False, show_label=False,
+        type="pil", interactive=False,
         elem_id="beat-image-wrap",
+    )
+
+    # TTS narration — auto-plays per beat, hidden player
+    beat_audio = gr.Audio(
+        value=None, visible=False,
+        label="Story narration", autoplay=True,
+        elem_id="beat-audio",
+    )
+
+    # Ambient background music — set once per story
+    ambient_audio = gr.Audio(
+        value=None, visible=False,
+        label="Ambient music", autoplay=True,
+        elem_id="ambient-audio",
     )
 
     # ── Story section ───────────────────────────────────────────────────────
     with gr.Column(elem_id="story-section", visible=False) as story_col:
-        option_btns = []
-        for i in range(MAX_OPTIONS):
-            btn = gr.Button(f"Option {i+1}", visible=False, elem_classes=["option-btn"])
-            option_btns.append(btn)
+        option_btns = [
+            gr.Button(f"Option {i+1}", visible=False, elem_classes=["option-btn"])
+            for i in range(MAX_OPTIONS)
+        ]
+
+        with gr.Row(elem_id="voice-row"):
+            mic_input = gr.Audio(
+                sources=["microphone"],
+                type="numpy",
+                label="🎙️ Or speak your choice",
+                elem_id="mic-input",
+                visible=True,
+            )
+
         reset_btn_story = gr.Button("Start over", elem_classes=["reset-btn"], size="sm")
 
     # ── Ending section ──────────────────────────────────────────────────────
@@ -288,20 +440,25 @@ with gr.Blocks(css=_CSS, title="StoryForge") as demo:
         gr.HTML('<p id="the-end-text">&#10024; The End &#10024;</p>')
         with gr.Accordion("Read the whole story", open=False):
             full_story_text = gr.Markdown("")
+        pdf_file = gr.File(
+            value=None, visible=False,
+            label="📖 Download your storybook (PDF)",
+            elem_id="pdf-download",
+        )
         reset_btn_end = gr.Button("Start a new adventure", elem_id="restart-big")
 
-    # ── Output list ────────────────────────────────────────────────────────
+    # ── Output list (18 elements) ───────────────────────────────────────────
     ALL_OUTPUTS = (
         [story_state, setup_col, story_col, ending_col,
          beat_display, status_html, progress_html]
         + option_btns
-        + [full_story_text, beat_image]
+        + [full_story_text, beat_image, beat_audio, ambient_audio, pdf_file]
     )
 
     # ── Wire theme bus ──────────────────────────────────────────────────────
     theme_bus.change(
         fn=on_theme_selected,
-        inputs=[theme_bus, moments_slider, options_slider, story_state],
+        inputs=[theme_bus, moments_slider, options_slider, hero_input, story_state],
         outputs=ALL_OUTPUTS,
     )
 
@@ -311,11 +468,18 @@ with gr.Blocks(css=_CSS, title="StoryForge") as demo:
             yield from choose_option(_i, state)
         btn.click(fn=_choice, inputs=[story_state], outputs=ALL_OUTPUTS)
 
-    # ── Wire reset buttons ──────────────────────────────────────────────────
+    # ── Wire microphone ─────────────────────────────────────────────────────
+    mic_input.stop_recording(
+        fn=on_voice_input,
+        inputs=[mic_input, story_state],
+        outputs=ALL_OUTPUTS,
+    )
+
+    # ── Wire reset ──────────────────────────────────────────────────────────
     reset_btn_story.click(fn=reset_story, inputs=[], outputs=ALL_OUTPUTS)
     reset_btn_end.click(fn=reset_story, inputs=[], outputs=ALL_OUTPUTS)
 
-    # ── Override styles injected late ──────────────────────────────────────
+    # ── Re-inject styles (beats StreamingBar override) ──────────────────────
     with open("styles_v2.css", encoding="utf-8") as _sf:
         gr.HTML(f"<style>{_sf.read()}</style>")
 

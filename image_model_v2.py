@@ -1,77 +1,58 @@
 """
-image_model_v2.py — Ghibli-Diffusion image generation for StoryForge v2.
-
-Model: nitrosocke/Ghibli-Diffusion (SD 1.5 fine-tune, ~1.7 GB)
-CPU-only; no GPU required. All heavy imports are deferred until first call
-so startup memory stays low on HF free-tier Spaces.
+image_model_v2.py — Image generation with optional character consistency.
+Uses Modal GPU (Ghibli-Diffusion + IP-Adapter) when Modal credentials are set,
+falls back to local CPU pipeline otherwise.
 """
-
 import io
+import os
 from functools import lru_cache
 
-MODEL_ID = "nitrosocke/Ghibli-Diffusion"
-_STEPS = 10
-_GUIDANCE = 6.0
-_SIZE = 384
+MODAL_APP = os.getenv("MODAL_APP_NAME", "storyforge")
+_STEPS_LOCAL = 10
+_SIZE_LOCAL = 384
+
+
+def _modal_ready() -> bool:
+    return bool(os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"))
+
+
+def generate_image(prompt: str, reference_bytes: bytes = None) -> bytes:
+    """Return PNG bytes. reference_bytes enables IP-Adapter character consistency."""
+    if _modal_ready():
+        try:
+            import modal
+
+            ImageModel = modal.Cls.from_name(MODAL_APP, "ImageModel")
+            return ImageModel().generate.remote(prompt, reference_bytes)
+        except Exception:
+            pass
+    return _generate_local(prompt)
 
 
 @lru_cache(maxsize=1)
-def _load_pipeline():
-    # Deferred imports — torch + diffusers are not loaded until first image request
+def _load_local():
     import torch
     from diffusers import StableDiffusionPipeline
 
     pipe = StableDiffusionPipeline.from_pretrained(
-        MODEL_ID,
+        "nitrosocke/Ghibli-Diffusion",
         torch_dtype=torch.float32,
         safety_checker=None,
         requires_safety_checker=False,
-    )
-    pipe = pipe.to("cpu")
+    ).to("cpu")
     pipe.set_progress_bar_config(disable=True)
     return pipe
 
 
-def generate_image(prompt: str) -> bytes:
-    """Return PNG bytes for *prompt*, or raise on failure."""
-    pipe = _load_pipeline()
+def _generate_local(prompt: str) -> bytes:
+    pipe = _load_local()
     result = pipe(
         prompt,
-        num_inference_steps=_STEPS,
-        guidance_scale=_GUIDANCE,
-        height=_SIZE,
-        width=_SIZE,
+        num_inference_steps=_STEPS_LOCAL,
+        guidance_scale=6.0,
+        height=_SIZE_LOCAL,
+        width=_SIZE_LOCAL,
     )
-    img = result.images[0]
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    result.images[0].save(buf, format="PNG")
     return buf.getvalue()
-
-
-# ── Latency smoke-test ────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import time
-
-    TEST_PROMPT = (
-        "ghibli style, a small brave fox standing at the edge of an enchanted forest, "
-        "soft morning light, watercolor, children's book illustration"
-    )
-
-    print("Loading pipeline...")
-    t0 = time.perf_counter()
-    _load_pipeline()
-    load_time = time.perf_counter() - t0
-    print(f"  Model loaded in {load_time:.1f}s")
-
-    print("Generating image...")
-    t1 = time.perf_counter()
-    png_bytes = generate_image(TEST_PROMPT)
-    gen_time = time.perf_counter() - t1
-    print(f"  Generated in {gen_time:.1f}s  ({len(png_bytes)//1024} KB)")
-
-    out = "test_image_v2.png"
-    with open(out, "wb") as f:
-        f.write(png_bytes)
-    print(f"  Saved -> {out}")
-    print(f"\nTotal wall time: {load_time + gen_time:.1f}s")

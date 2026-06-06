@@ -1,8 +1,14 @@
-gradio
+gradio>=4.44.0
 llama-cpp-python
 huggingface_hub
-diffusers
-transformers
+diffusers>=0.30.0
+transformers>=4.45.0
 accelerate
 torch --extra-index-url https://download.pytorch.org/whl/cpu
 Pillow
+modal
+edge-tts
+reportlab
+soundfile
+numpy
+scipy
