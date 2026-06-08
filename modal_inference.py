@@ -119,12 +119,17 @@ class ImageModel:
             safety_checker=None,
             cache_dir="/models",
         ).to("cuda")
-        self.pipe.load_ip_adapter(
-            "h94/IP-Adapter",
-            subfolder="models",
-            weight_name="ip-adapter_sd15.bin",
-        )
         self.pipe.set_progress_bar_config(disable=True)
+        self._ip_loaded = False
+
+    def _ensure_ip_adapter(self):
+        if not self._ip_loaded:
+            self.pipe.load_ip_adapter(
+                "h94/IP-Adapter",
+                subfolder="models",
+                weight_name="ip-adapter_sd15.bin",
+            )
+            self._ip_loaded = True
 
     @modal.method()
     def generate(
@@ -145,12 +150,13 @@ class ImageModel:
             width=size,
         )
         if reference_bytes:
+            self._ensure_ip_adapter()
             ref = Image.open(io.BytesIO(reference_bytes)).convert("RGB")
             self.pipe.set_ip_adapter_scale(0.5)
             kwargs["ip_adapter_image"] = ref
         else:
-            self.pipe.set_ip_adapter_scale(0.0)
-            kwargs["ip_adapter_image"] = Image.new("RGB", (size, size), (128, 128, 128))
+            if self._ip_loaded:
+                self.pipe.set_ip_adapter_scale(0.0)
 
         result = self.pipe(**kwargs)
         buf = io.BytesIO()
