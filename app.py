@@ -21,22 +21,23 @@ import html as _html
 import io
 import threading
 
-# Patch gradio_client bool-schema bug (gradio-client 1.3.0 + pydantic schemas)
-# _json_schema_to_python_type recurses into additionalProperties which can be bool
+import gradio as gr
+
+# Patch gradio Blocks.get_api_info — gradio-client 1.3.0 crashes on bool
+# additionalProperties in pydantic schemas (APIInfoParseError). Non-critical:
+# only affects the /info endpoint used by gradio Python client, not the UI.
 try:
-    import gradio_client.utils as _gcu
-    _orig_parse = _gcu._json_schema_to_python_type
-    def _safe_parse(schema, defs=None):
-        if not isinstance(schema, dict):
-            return "Any"
-        if "additionalProperties" in schema and not isinstance(schema["additionalProperties"], dict):
-            schema = {k: v for k, v in schema.items() if k != "additionalProperties"}
-        return _orig_parse(schema, defs)
-    _gcu._json_schema_to_python_type = _safe_parse
+    from gradio_client.utils import APIInfoParseError as _APIInfoParseError
+    import gradio.blocks as _gb
+    _orig_get_api_info = _gb.Blocks.get_api_info
+    def _safe_get_api_info(self):
+        try:
+            return _orig_get_api_info(self)
+        except (_APIInfoParseError, TypeError, Exception):
+            return {"named_endpoints": {}, "unnamed_endpoints": {}}
+    _gb.Blocks.get_api_info = _safe_get_api_info
 except Exception:
     pass
-
-import gradio as gr
 
 import ambient
 import pdf_export
