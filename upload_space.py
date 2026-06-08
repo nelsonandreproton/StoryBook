@@ -1,52 +1,21 @@
 """
-Upload StoryBook to your HF Space.
+Push StoryBook to HF Space via git.
 
 Usage (Windows PowerShell):
     $env:HF_TOKEN="hf_..."
     python3 upload_space.py
 """
 import os
-from huggingface_hub import HfApi
+import subprocess
 
 TOKEN = os.environ["HF_TOKEN"]
 REPO  = "nelsonandreproton/storybook"
+REMOTE_URL = f"https://user:{TOKEN}@huggingface.co/spaces/{REPO}"
 
-IGNORE = [
-    "upload_space.py",
-    ".git",
-    ".git*",
-    "__pycache__",
-    "**/__pycache__",
-    "*.gguf",
-    "*.bin",
-    "*.safetensors",
-    "*.pt",
-    "*.pth",
-    ".env",
-    "*.pyc",
-    "**/*.pyc",
-    "test_image*",
-    "*.egg-info",
-    "**/*.egg-info",
-    ".venv",
-    "venv",
-    "env",
-    "node_modules",
-    "*.log",
-    ".DS_Store",
-    "Thumbs.db",
-]
+# Add / update the hf-space remote
+subprocess.run(["git", "remote", "remove", "space"], capture_output=True)
+subprocess.run(["git", "remote", "add", "space", REMOTE_URL], check=True)
 
-import huggingface_hub
-huggingface_hub.login(token=TOKEN)
-
-api = HfApi()
-
-print(f"Uploading to {REPO} ...")
-api.upload_large_folder(
-    folder_path=".",
-    repo_id=REPO,
-    repo_type="space",
-    ignore_patterns=IGNORE,
-)
-print("Done! Visit: https://huggingface.co/spaces/nelsonandreproton/storybook")
+print(f"Pushing to {REPO} ...")
+subprocess.run(["git", "push", "space", "master", "--force"], check=True)
+print(f"Done! https://huggingface.co/spaces/{REPO}")
