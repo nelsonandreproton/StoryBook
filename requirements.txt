@@ -1,14 +1,9 @@
 gradio>=4.44.0
-llama-cpp-python
+llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 huggingface_hub
-diffusers>=0.30.0
-transformers>=4.45.0
-accelerate
-torch --extra-index-url https://download.pytorch.org/whl/cpu
 Pillow
-modal
 edge-tts
 reportlab
 soundfile
 numpy
-scipy
+modal
