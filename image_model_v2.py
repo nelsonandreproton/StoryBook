@@ -24,8 +24,11 @@ def generate_image(prompt: str, reference_bytes: bytes = None) -> bytes:
 
             ImageModel = modal.Cls.from_name(MODAL_APP, "ImageModel")
             return ImageModel().generate.remote(prompt, reference_bytes)
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback
+            print(f"[image_model] Modal call failed: {e}")
+            traceback.print_exc()
+            return None
     return _generate_local(prompt)
 
 

@@ -28,7 +28,7 @@ def generate_ambient(theme: str, duration: float = 40.0):
     # Normalise and fade edges for clean start/end
     peak = np.abs(audio).max()
     if peak > 0:
-        audio = audio / peak * 0.72
+        audio = audio / peak * 0.25
     fade = min(int(SR * 1.5), n // 4)
     audio[:fade] *= np.linspace(0, 1, fade)
     audio[-fade:] *= np.linspace(1, 0, fade)
