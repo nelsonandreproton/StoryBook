@@ -1,5 +1,5 @@
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-gradio>=5.0.0
+pyaudioop
 llama-cpp-python
 huggingface_hub
 Pillow
