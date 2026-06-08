@@ -16,6 +16,12 @@ def _modal_ready() -> bool:
     return bool(os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"))
 
 
+_NEGATIVE = (
+    "border, frame, box, square, panel, grid, letterbox, vignette, "
+    "text, watermark, signature, logo, blur, dark, ugly, deformed"
+)
+
+
 def generate_image(prompt: str, reference_bytes: bytes = None) -> bytes:
     """Return PNG bytes. reference_bytes enables IP-Adapter character consistency."""
     if _modal_ready():
@@ -23,7 +29,7 @@ def generate_image(prompt: str, reference_bytes: bytes = None) -> bytes:
             import modal
 
             ImageModel = modal.Cls.from_name(MODAL_APP, "ImageModel")
-            return ImageModel().generate.remote(prompt, reference_bytes)
+            return ImageModel().generate.remote(prompt, reference_bytes, _NEGATIVE)
         except Exception as e:
             import traceback
             print(f"[image_model] Modal call failed: {e}")

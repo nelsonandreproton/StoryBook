@@ -131,6 +131,7 @@ class ImageModel:
         self,
         prompt: str,
         reference_bytes: bytes = None,
+        negative_prompt: str = "",
         steps: int = 20,
         size: int = 512,
     ) -> bytes:
@@ -139,8 +140,9 @@ class ImageModel:
 
         kwargs = dict(
             prompt=prompt,
+            negative_prompt=negative_prompt or "border, frame, box, ugly, blurry, deformed",
             num_inference_steps=steps,
-            guidance_scale=7.5,
+            guidance_scale=8.5,
             height=size,
             width=size,
         )

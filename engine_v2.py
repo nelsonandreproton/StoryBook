@@ -142,7 +142,7 @@ _STOPWORDS = {
     "as", "by", "from", "up", "out", "about", "into", "through", "after",
 }
 
-_MAX_BEAT_WORDS = 18
+_MAX_BEAT_WORDS = 30
 
 
 def _trim_beat(beat: str) -> str:
@@ -152,16 +152,23 @@ def _trim_beat(beat: str) -> str:
     return " ".join(content[:_MAX_BEAT_WORDS])
 
 
+_NEGATIVE_PROMPT = (
+    "border, frame, box, square, panel, grid, letterbox, vignette, "
+    "text, watermark, signature, logo, blur, dark, ugly, deformed"
+)
+
+
 def build_image_prompt(beat: str, hero: str, world: str) -> str:
     """
     Build a CLIP-safe image prompt (target ≤77 tokens).
     Always includes the 'ghibli style' trigger phrase required by Ghibli-Diffusion.
+    Scene content leads so CLIP weights it highest.
     """
-    parts = ["ghibli style"]
+    scene = _trim_beat(beat)
+    parts = [scene]
     if hero:
-        parts.append(hero[:40])
+        parts.append(hero[:30])
     if world:
-        parts.append(world[:40])
-    parts.append(_trim_beat(beat))
-    parts += ["children's book illustration", "soft watercolor", "warm light", "detailed"]
+        parts.append(world[:30])
+    parts += ["ghibli style", "soft watercolor", "warm light", "highly detailed", "cinematic"]
     return ", ".join(parts)
