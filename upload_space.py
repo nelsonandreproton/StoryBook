@@ -9,7 +9,7 @@ import os
 import subprocess
 
 TOKEN = os.environ["HF_TOKEN"]
-REPO  = "nelsonandreproton/storybook"
+REPO  = "nelsondiasandre/StoryForge"
 REMOTE_URL = f"https://user:{TOKEN}@huggingface.co/spaces/{REPO}"
 
 # Add / update the hf-space remote
