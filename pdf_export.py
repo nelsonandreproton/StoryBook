@@ -4,7 +4,14 @@ Returns the path to a temporary PDF file.
 """
 import io
 import os
+import re
 import tempfile
+
+
+def _slugify(text: str) -> str:
+    text = re.sub(r"[^\w\s-]", "", text.lower())
+    text = re.sub(r"[\s_-]+", "_", text).strip("_")
+    return text[:40]
 
 
 def build_pdf(
@@ -31,7 +38,8 @@ def build_pdf(
         Spacer,
     )
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    slug = _slugify(f"{theme} {hero}") or "storyforge"
+    tmp = tempfile.NamedTemporaryFile(prefix=f"{slug}_", suffix=".pdf", delete=False)
     tmp.close()
 
     W, H = A5
