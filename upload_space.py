@@ -17,5 +17,5 @@ subprocess.run(["git", "remote", "remove", "space"], capture_output=True)
 subprocess.run(["git", "remote", "add", "space", REMOTE_URL], check=True)
 
 print(f"Pushing to {REPO} ...")
-subprocess.run(["git", "push", "space", "master", "--force"], check=True)
+subprocess.run(["git", "push", "space", "master:main", "--force"], check=True)
 print(f"Done! https://huggingface.co/spaces/{REPO}")
