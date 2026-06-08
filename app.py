@@ -341,7 +341,7 @@ def reset_story():
 with open("styles_v2.css", encoding="utf-8") as _f:
     _CSS = _f.read()
 
-with gr.Blocks(title="StoryForge") as demo:
+with gr.Blocks(title="StoryForge", css=_CSS) as demo:
 
     story_state = gr.State({})
 
@@ -486,4 +486,4 @@ with gr.Blocks(title="StoryForge") as demo:
 
 if __name__ == "__main__":
     demo.queue()
-    demo.launch(css=_CSS)
+    demo.launch()
