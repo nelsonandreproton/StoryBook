@@ -32,7 +32,8 @@ def generate_ambient(theme: str, duration: float = 40.0):
     fade = min(int(SR * 1.5), n // 4)
     audio[:fade] *= np.linspace(0, 1, fade)
     audio[-fade:] *= np.linspace(1, 0, fade)
-    return SR, audio.astype(np.float32)
+    # Convert to int16 — Gradio expects integer PCM to avoid auto-conversion warnings
+    return SR, (audio * 32767).astype(np.int16)
 
 
 def _space(t, n):
