@@ -33,8 +33,10 @@ def generate(system: str, user: str, max_tokens: int = 512) -> str:
 
             TextModel = modal.Cls.from_name(MODAL_APP, "TextModel")
             return TextModel().generate.remote(system, user, max_tokens)
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback
+            print(f"[model] Modal call failed, falling back to local: {e}")
+            traceback.print_exc()
     # Local fallback
     llm = _local_llm()
     out = llm.create_chat_completion(
