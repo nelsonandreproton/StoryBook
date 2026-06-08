@@ -2,6 +2,7 @@
 audioop-lts
 llama-cpp-python
 huggingface_hub<1.0
+gradio-client>=1.4.0
 Pillow
 edge-tts
 reportlab
