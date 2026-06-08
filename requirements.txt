@@ -1,7 +1,7 @@
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 audioop-lts
 llama-cpp-python
-huggingface_hub
+huggingface_hub<1.0
 Pillow
 edge-tts
 reportlab
