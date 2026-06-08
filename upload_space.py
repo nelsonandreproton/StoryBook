@@ -12,9 +12,6 @@ REPO  = "nelsonandreproton/storybook"
 
 api = HfApi()
 
-api.create_repo(repo_id=REPO, repo_type="space", space_sdk="gradio",
-                exist_ok=True, token=TOKEN)
-
 url = api.upload_folder(
     folder_path=".",
     repo_id=REPO,
