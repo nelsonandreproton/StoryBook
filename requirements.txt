@@ -1,5 +1,6 @@
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 gradio>=4.44.0
-llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python
 huggingface_hub
 Pillow
 edge-tts
