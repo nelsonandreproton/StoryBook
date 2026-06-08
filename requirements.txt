@@ -2,6 +2,8 @@
 audioop-lts
 llama-cpp-python
 huggingface_hub<1.0
+starlette<1.0
+jinja2<3.2
 Pillow
 edge-tts
 reportlab
