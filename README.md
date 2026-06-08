@@ -4,7 +4,7 @@ emoji: 📖
 colorFrom: yellow
 colorTo: purple
 sdk: gradio
-sdk_version: 4.44.0
+sdk_version: "4.44.0"
 app_file: app.py
 pinned: true
 license: mit
@@ -51,6 +51,15 @@ This deploys Qwen3-4B (text) and Ghibli-Diffusion + IP-Adapter (images) as serve
 ```bash
 pip install -r requirements.txt
 python app.py
+```
+
+> Requires Python 3.10+. Compatible with Gradio 4.x and 6.x.
+
+## Upload to HF Space
+
+```bash
+$env:HF_TOKEN="hf_..."
+python3 upload_space.py
 ```
 
 ## Architecture
