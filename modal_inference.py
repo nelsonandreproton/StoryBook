@@ -150,6 +150,7 @@ class ImageModel:
             kwargs["ip_adapter_image"] = ref
         else:
             self.pipe.set_ip_adapter_scale(0.0)
+            kwargs["ip_adapter_image"] = Image.new("RGB", (size, size), (128, 128, 128))
 
         result = self.pipe(**kwargs)
         buf = io.BytesIO()
