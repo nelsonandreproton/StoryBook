@@ -34,7 +34,7 @@ Add these in your Space settings → **Secrets**:
 | `MODAL_TOKEN_ID` | `modal token new` → token ID |
 | `MODAL_TOKEN_SECRET` | `modal token new` → token secret |
 
-Without Modal, the app falls back to local CPU inference (slower, but still works).
+Without Modal secrets, text falls back to local GGUF inference and images are skipped (torch/diffusers not installed on HF Spaces).
 
 ## Deploy the Modal backend
 
@@ -53,7 +53,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-> Requires Python 3.10+. Compatible with Gradio 4.x and 6.x.
+> Requires Python 3.10+. Deployed on HF Spaces with Python 3.13 + Gradio 4.44.0.
 
 ## Upload to HF Space
 
