@@ -20,6 +20,20 @@ Output tuple (18 elements, index-stable across all handlers):
 import html as _html
 import io
 import threading
+
+# Patch gradio_client bool-schema bug (Python 3.13 + gradio-client 1.3.0)
+# gradio_client/utils.py:863 does `"const" in schema` where schema can be bool
+try:
+    import gradio_client.utils as _gcu
+    _orig_get_type = _gcu.get_type
+    def _safe_get_type(schema):
+        if not isinstance(schema, dict):
+            return "Any"
+        return _orig_get_type(schema)
+    _gcu.get_type = _safe_get_type
+except Exception:
+    pass
+
 import gradio as gr
 
 import ambient
