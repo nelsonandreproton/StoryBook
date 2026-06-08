@@ -21,16 +21,18 @@ import html as _html
 import io
 import threading
 
-# Patch gradio_client bool-schema bug (Python 3.13 + gradio-client 1.3.0)
-# gradio_client/utils.py:863 does `"const" in schema` where schema can be bool
+# Patch gradio_client bool-schema bug (gradio-client 1.3.0 + pydantic schemas)
+# _json_schema_to_python_type recurses into additionalProperties which can be bool
 try:
     import gradio_client.utils as _gcu
-    _orig_get_type = _gcu.get_type
-    def _safe_get_type(schema):
+    _orig_parse = _gcu._json_schema_to_python_type
+    def _safe_parse(schema, defs=None):
         if not isinstance(schema, dict):
             return "Any"
-        return _orig_get_type(schema)
-    _gcu.get_type = _safe_get_type
+        if "additionalProperties" in schema and not isinstance(schema["additionalProperties"], dict):
+            schema = {k: v for k, v in schema.items() if k != "additionalProperties"}
+        return _orig_parse(schema, defs)
+    _gcu._json_schema_to_python_type = _safe_parse
 except Exception:
     pass
 
