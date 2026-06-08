@@ -37,6 +37,9 @@ IGNORE = [
     "Thumbs.db",
 ]
 
+import huggingface_hub
+huggingface_hub.login(token=TOKEN)
+
 api = HfApi()
 
 print(f"Uploading to {REPO} ...")
@@ -44,7 +47,6 @@ api.upload_large_folder(
     folder_path=".",
     repo_id=REPO,
     repo_type="space",
-    token=TOKEN,
     ignore_patterns=IGNORE,
 )
 print("Done! Visit: https://huggingface.co/spaces/nelsonandreproton/storybook")
