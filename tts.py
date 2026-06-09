@@ -1,27 +1,56 @@
 """
-tts.py — Text-to-speech via edge-tts (Microsoft neural voices, no GPU needed).
-Returns a path to a temporary MP3 file, or None on failure.
+tts.py — Text-to-speech narration.
+
+Primary: Kokoro-82M served on Modal (open weights — keeps every model in the
+stack ≤ 4B parameters). Fallback: edge-tts cloud voices, for local dev when
+Modal credentials are absent.
+
+generate_speech() returns a path to a temporary audio file, or None on failure.
 """
 import asyncio
 import os
 import tempfile
 import threading
 
+MODAL_APP = os.getenv("MODAL_APP_NAME", "storyforge")
+_KOKORO_VOICE = os.getenv("KOKORO_VOICE", "af_heart")
+_EDGE_VOICE = os.getenv("TTS_VOICE", "en-US-JennyNeural")
 
-_VOICE = os.getenv("TTS_VOICE", "en-US-JennyNeural")
 
+def _modal_ready() -> bool:
+    return bool(os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"))
+
+
+def generate_speech(text: str) -> str | None:
+    """Returns path to a temp audio file (WAV via Kokoro, MP3 via edge-tts), or None."""
+    if not text or not text.strip():
+        return None
+    if _modal_ready():
+        try:
+            import modal
+
+            TTSModel = modal.Cls.from_name(MODAL_APP, "TTSModel")
+            wav = TTSModel().speak.remote(text.strip(), _KOKORO_VOICE)
+            if wav:
+                tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+                tmp.write(wav)
+                tmp.close()
+                return tmp.name
+        except Exception as e:
+            print(f"[tts] Modal Kokoro failed, falling back to edge-tts: {e}")
+    return _edge_tts(text)
+
+
+# ── edge-tts fallback ─────────────────────────────────────────────────────────
 
 async def _save(text: str, path: str) -> None:
     import edge_tts
 
-    communicate = edge_tts.Communicate(text, _VOICE)
+    communicate = edge_tts.Communicate(text, _EDGE_VOICE)
     await communicate.save(path)
 
 
-def generate_speech(text: str) -> str | None:
-    """Returns path to a temp MP3 file, or None on failure."""
-    if not text or not text.strip():
-        return None
+def _edge_tts(text: str) -> str | None:
     result: list = [None]
     error: list = [None]
 

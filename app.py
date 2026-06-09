@@ -460,11 +460,15 @@ with gr.Blocks(title="StoryForge", css=_CSS) as demo:
 
         theme_bus = gr.Textbox(value="", visible=True, elem_id="theme-bus", label="")
 
-        cards_html = '<div class="theme-grid">'
+        cards_html = '<div class="theme-grid" role="group" aria-label="Choose your adventure">'
         for emoji, title, subtitle in THEMES:
             tv = f"{emoji} {title}"
             cards_html += (
-                f'<div class="theme-card" onclick="'
+                f'<div class="theme-card" role="button" tabindex="0" '
+                f'aria-label="{title} — {subtitle}" '
+                f'onkeydown="if(event.key===\'Enter\'||event.key===\' \')'
+                f'{{event.preventDefault();this.click();}}" '
+                f'onclick="'
                 f'(function(){{'
                 f'var wrap=document.getElementById(\'theme-bus\');'
                 f'var tb=wrap?wrap.querySelector(\'textarea,input[type=text]\'):null;'

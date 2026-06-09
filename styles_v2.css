@@ -537,6 +537,34 @@ button#restart-big:hover {
     cursor: pointer !important;
 }
 
+/* ── Keyboard focus (overrides the global outline kill) */
+.theme-card:focus-visible {
+    outline: 3px solid var(--coral) !important;
+    outline-offset: 3px !important;
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 10px 24px var(--shadow);
+}
+.option-btn button:focus-visible,
+button.option-btn:focus-visible {
+    outline: 3px solid var(--ink-soft) !important;
+    outline-offset: 3px !important;
+}
+button#restart-big:focus-visible,
+.reset-btn button:focus-visible {
+    outline: 3px solid var(--green-dark) !important;
+    outline-offset: 3px !important;
+}
+
+/* ── Small polish ───────────────────────────────────── */
+input[type="range"] {
+    accent-color: var(--coral) !important;
+}
+#pdf-download:hover {
+    box-shadow: 0 6px 18px var(--shadow) !important;
+    transform: translateY(-2px);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
 /* ── Mobile ─────────────────────────────────────────── */
 @media (max-width: 640px) {
     #app-title { font-size: 2rem !important; }

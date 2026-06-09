@@ -19,7 +19,7 @@ An interactive branching picture-book adventure for children (age 4–8).
 - **Branching story** — 2–6 choices per moment, up to 15 moments
 - **Ghibli-style illustrations** — one image generated per beat
 - **Character consistency** — IP-Adapter keeps your hero looking the same throughout
-- **TTS narration** — each beat is read aloud (Microsoft Edge neural voice)
+- **TTS narration** — each beat is read aloud by Kokoro-82M (open weights)
 - **Voice input** — speak your choice instead of clicking
 - **Ambient music** — procedural background audio matched to your theme
 - **PDF export** — download your illustrated story as a printable picture book
@@ -44,7 +44,19 @@ modal token new
 modal deploy modal_inference.py
 ```
 
-This deploys Qwen3-4B (text) and Ghibli-Diffusion + IP-Adapter (images) as serverless GPU functions.
+This deploys Qwen3-4B (text), Ghibli-Diffusion + IP-Adapter (images), Whisper small (STT) and Kokoro-82M (TTS) as serverless Modal functions.
+
+## Tiny stack — every model ≤ 4B parameters
+
+| Model | Role | Params |
+|---|---|---|
+| Qwen3-4B | story text | 4B |
+| Ghibli-Diffusion (SD 1.5) | illustrations | ~0.9B |
+| Kokoro-82M | narration | 82M |
+| Whisper small | voice input | 244M |
+| IP-Adapter (SD 1.5) | character consistency | ~22M adapter |
+
+Total: well under 5.5B parameters for a fully multimodal experience.
 
 ## Run locally
 
@@ -68,7 +80,7 @@ python3 upload_space.py
 |---|---|---|
 | Text generation | `model.py` | Modal A10G → Qwen3-4B · fallback: local GGUF |
 | Image generation | `image_model_v2.py` | Modal T4 → Ghibli-Diffusion + IP-Adapter · fallback: local CPU |
-| TTS narration | `tts.py` | edge-tts (no GPU, requires internet) |
+| TTS narration | `tts.py` | Modal CPU → Kokoro-82M · fallback: edge-tts |
 | Voice input STT | `stt.py` | Modal T4 → Whisper · fallback: transformers whisper-tiny |
 | Ambient audio | `ambient.py` | numpy procedural, CPU |
 | PDF export | `pdf_export.py` | reportlab, CPU |
@@ -82,6 +94,7 @@ python3 upload_space.py
 | `MODEL_REPO` | `Qwen/Qwen3-1.7B-GGUF` | GGUF text model (local fallback only) |
 | `MODEL_FILE` | `Qwen3-1.7B-Q8_0.gguf` | Filename within that repo |
 | `MODAL_APP_NAME` | `storyforge` | Name used when deploying to Modal |
-| `TTS_VOICE` | `en-US-JennyNeural` | edge-tts voice |
+| `KOKORO_VOICE` | `af_heart` | Kokoro-82M voice (Modal TTS) |
+| `TTS_VOICE` | `en-US-JennyNeural` | edge-tts voice (local fallback only) |
 | `N_CTX` | `4096` | Context window (local fallback) |
 | `N_THREADS` | `cpu_count` | Inference threads (local fallback) |
