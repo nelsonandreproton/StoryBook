@@ -1,7 +1,8 @@
 """
-§11 Day-1 validation gate.
-Runs 3 full turns (start + 2 auto-choices) and prints each beat + options.
+Smoke test — 3 full turns (start + 2 auto-choices), prints each beat + options.
 Judge: coherent? consistent hero/world? clean JSON (no salvage)?
+Uses the same engine + model modules as the app (Modal when configured,
+local GGUF otherwise — first local run downloads ~1.8 GB).
 """
 
 from engine import StoryState, SYSTEM, build_prompt, parse_response, apply_turn

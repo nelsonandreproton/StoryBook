@@ -394,6 +394,43 @@ button#restart-big:hover {
     transform: translateY(-2px) !important;
 }
 
+/* ── Beat image ─────────────────────────────────────── */
+#beat-image-wrap {
+    max-width: var(--page-max);
+    margin: 0 auto 1.2rem auto;
+}
+#beat-image-wrap > div,
+#beat-image-wrap img {
+    border-radius: 20px !important;
+    border: 2px solid var(--parchment2) !important;
+    box-shadow: 0 6px 24px var(--shadow) !important;
+    background: var(--parchment) !important;
+    overflow: hidden;
+    width: 100% !important;
+    max-width: var(--page-max) !important;
+    height: auto !important;
+}
+@keyframes imageFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+}
+#beat-image-wrap img {
+    animation: imageFadeIn 0.6s ease both;
+}
+.image-placeholder {
+    background: linear-gradient(90deg, var(--parchment) 25%, var(--parchment2) 50%, var(--parchment) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite;
+    border-radius: 20px;
+    height: 320px;
+    max-width: var(--page-max);
+    margin: 0 auto 1.2rem auto;
+}
+@keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
 /* ── Accordion ──────────────────────────────────────── */
 .gr-accordion {
     border-radius: 12px !important;
@@ -409,6 +446,174 @@ button#restart-big:hover {
 @keyframes fadeInDown {
     from { opacity: 0; transform: translateY(-12px); }
     to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Hero input ─────────────────────────────────────── */
+#hero-input { margin-bottom: 1.2rem !important; }
+#hero-input textarea,
+#hero-input input {
+    background: var(--parchment) !important;
+    border: 2px solid var(--parchment2) !important;
+    border-radius: 12px !important;
+    font-family: 'Nunito', sans-serif !important;
+    font-size: 0.98rem !important;
+    color: var(--ink) !important;
+    padding: 0.6rem 1rem !important;
+}
+#hero-input textarea:focus,
+#hero-input input:focus {
+    border-color: var(--coral) !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* ── Voice row ───────────────────────────────────────── */
+#voice-row {
+    margin-top: 0.8rem !important;
+    max-width: var(--page-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+#mic-input { border-radius: 12px !important; }
+
+/* ── Audio players (hidden, autoplay) ───────────────── */
+#beat-audio,
+#ambient-audio {
+    display: none !important;
+}
+
+/* ── PDF download ────────────────────────────────────── */
+#pdf-download {
+    max-width: var(--page-max) !important;
+    margin: 0.8rem auto !important;
+    background: var(--parchment) !important;
+    border: 2px solid var(--gold) !important;
+    border-radius: 14px !important;
+    padding: 0.8rem 1.2rem !important;
+}
+
+/* ── Streaming cursor ───────────────────────────────── */
+.stream-cursor {
+    color: var(--coral);
+    margin-left: 2px;
+    animation: cursorBlink 1s steps(1) infinite;
+}
+@keyframes cursorBlink {
+    50% { opacity: 0; }
+}
+
+/* ── Image placeholder slot (shimmer skeleton) ──────── */
+#image-placeholder-slot,
+#image-placeholder-slot > div {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+}
+
+/* ── Sound toggle ───────────────────────────────────── */
+#sound-row {
+    display: flex !important;
+    justify-content: center !important;
+    margin: 0 0 0.4rem 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+#sound-toggle {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: auto !important;
+    flex-grow: 0 !important;
+}
+#sound-toggle label {
+    font-family: 'Nunito', sans-serif !important;
+    font-size: 0.9rem !important;
+    color: var(--ink-soft) !important;
+    cursor: pointer !important;
+}
+#sound-toggle input[type="checkbox"] {
+    accent-color: var(--coral) !important;
+    cursor: pointer !important;
+}
+
+/* ── Keyboard focus (overrides the global outline kill) */
+.theme-card:focus-visible {
+    outline: 3px solid var(--coral) !important;
+    outline-offset: 3px !important;
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 10px 24px var(--shadow);
+}
+.option-btn button:focus-visible,
+button.option-btn:focus-visible {
+    outline: 3px solid var(--ink-soft) !important;
+    outline-offset: 3px !important;
+}
+button#restart-big:focus-visible,
+.reset-btn button:focus-visible {
+    outline: 3px solid var(--green-dark) !important;
+    outline-offset: 3px !important;
+}
+
+/* ── Status / error message ─────────────────────────── */
+#status-text,
+#status-text > div {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+}
+.status-error {
+    background: #fdeaea;
+    border: 2px solid #e8a49a;
+    color: #a33a2a;
+    border-radius: 14px;
+    padding: 0.8rem 1.2rem;
+    max-width: var(--page-max);
+    margin: 0.6rem auto;
+    text-align: center;
+    font-family: 'Nunito', sans-serif;
+    font-size: 1rem;
+    animation: fadeIn 0.3s ease both;
+}
+
+/* ── Small polish ───────────────────────────────────── */
+input[type="range"] {
+    accent-color: var(--coral) !important;
+}
+#pdf-download:hover {
+    box-shadow: 0 6px 18px var(--shadow) !important;
+    transform: translateY(-2px);
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+/* ── Mobile ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+    #app-title { font-size: 2rem !important; }
+    #app-tagline { font-size: 0.95rem !important; }
+    .theme-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    .theme-card { min-height: 96px; padding: 0.9rem 0.5rem; }
+    .tc-emoji { font-size: 2rem; }
+    .beat-card {
+        padding: 1.4rem 1.2rem;
+        border-radius: 20px;
+        min-height: 110px;
+    }
+    .beat-text { font-size: 1.15rem; line-height: 1.6; }
+    #sliders-row { padding: 0.7rem 0.8rem; }
+    .option-btn button:not(:disabled),
+    button.option-btn:not(:disabled) {
+        font-size: 0.95rem !important;
+        padding: 0.7rem 1rem !important;
+        min-height: 48px !important;
+    }
+    .image-placeholder { height: 220px; }
+}
+@media (max-width: 380px) {
+    .theme-grid { grid-template-columns: 1fr; }
 }
 
 /* ── Last-word rules (must stay at end of file) ─────── */

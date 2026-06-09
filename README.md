@@ -66,6 +66,7 @@ python app.py
 ```
 
 > Requires Python 3.10+. Deployed on HF Spaces with Python 3.13 + Gradio 4.44.0.
+> The local image fallback needs `torch`+`diffusers`, and the local STT fallback needs `transformers` — install them separately if you run without Modal.
 
 ## Upload to HF Space
 
@@ -79,12 +80,12 @@ python3 upload_space.py
 | Layer | File | Backend |
 |---|---|---|
 | Text generation | `model.py` | Modal A10G → Qwen3-4B · fallback: local GGUF |
-| Image generation | `image_model_v2.py` | Modal T4 → Ghibli-Diffusion + IP-Adapter · fallback: local CPU |
+| Image generation | `image_model.py` | Modal T4 → Ghibli-Diffusion + IP-Adapter · fallback: local CPU |
 | TTS narration | `tts.py` | Modal CPU → Kokoro-82M · fallback: edge-tts |
 | Voice input STT | `stt.py` | Modal T4 → Whisper · fallback: transformers whisper-tiny |
 | Ambient audio | `ambient.py` | numpy procedural, CPU |
 | PDF export | `pdf_export.py` | reportlab, CPU |
-| Story engine | `engine_v2.py` | Pure Python, stateless |
+| Story engine | `engine.py` | Pure Python, stateless |
 | UI | `app.py` | Gradio |
 
 ## Configuration

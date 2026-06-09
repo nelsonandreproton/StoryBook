@@ -1,8 +1,8 @@
 """
-StoryForge engine — coherence lives HERE, not in the model's memory.
-The small model forgets, so we never rely on it. Every turn we re-inject the
-canonical facts (story_state) and ask only for the NEXT beat. Explicit state in,
-one grounded step out. No cloud APIs.
+engine.py — StoryForge engine. Coherence lives HERE, not in the model's memory.
+The small model forgets, so we never rely on it: every turn we re-inject the
+canonical facts (StoryState) and ask only for the NEXT beat. Explicit state in,
+one grounded step out. Also builds CLIP-safe image prompts per beat.
 """
 
 import json
@@ -94,7 +94,7 @@ def _strip_think(text: str) -> str:
 
 def _strip_non_latin(text: str) -> str:
     """Remove CJK and other non-Latin unicode blocks that Qwen3 occasionally emits."""
-    return re.sub(r"[⺀-鿿豈-﫿︰-﹏]+", "", text).strip()
+    return re.sub(r"[⺀-鿿豈-﫿︰-﹏]+", "", text).strip()
 
 
 def _clean(text: str) -> str:
@@ -110,7 +110,6 @@ def parse_response(raw: str) -> dict:
     try:
         data = json.loads(candidate)
     except json.JSONDecodeError:
-        # Salvage beat from truncated JSON
         beat_m = re.search(r'"beat"\s*:\s*"((?:[^"\\]|\\.)*)"', candidate)
         beat = beat_m.group(1) if beat_m else "The story pauses for a moment..."
         data = {"beat": beat, "options": []}
@@ -124,6 +123,27 @@ def parse_response(raw: str) -> dict:
     return data
 
 
+_PARTIAL_BEAT_RE = re.compile(r'"beat"\s*:\s*"((?:[^"\\]|\\.)*)')
+
+
+def extract_partial_beat(raw: str) -> str:
+    """Best-effort beat text from a partially generated JSON response.
+
+    Used while streaming: the closing quote may not have arrived yet, and a
+    <think> block may still be open.
+    """
+    raw = re.sub(r"<think>.*?(?:</think>|$)", "", raw, flags=re.DOTALL)
+    m = _PARTIAL_BEAT_RE.search(raw)
+    if not m:
+        return ""
+    text = m.group(1)
+    try:
+        text = json.loads(f'"{text}"')
+    except json.JSONDecodeError:
+        text = text.replace('\\"', '"').replace("\\n", " ")
+    return _clean(text)
+
+
 def apply_turn(s: StoryState, data: dict) -> StoryState:
     if data.get("hero") and not s.hero:
         s.hero = data["hero"].strip()
@@ -134,3 +154,44 @@ def apply_turn(s: StoryState, data: dict) -> StoryState:
         if f and f.lower() != "none" and f not in s.facts:
             s.facts.append(f)
     return s
+
+
+# ── Image prompt builder ──────────────────────────────────────────────────────
+
+_STOPWORDS = {
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "of",
+    "for", "with", "is", "are", "was", "were", "be", "been", "being",
+    "it", "its", "he", "she", "they", "their", "this", "that", "then",
+    "as", "by", "from", "up", "out", "about", "into", "through", "after",
+}
+
+_MAX_BEAT_WORDS = 30
+
+
+def _trim_beat(beat: str) -> str:
+    """Extract the most visually descriptive words from a beat (≤18 words)."""
+    words = beat.replace(",", " ").replace(".", " ").replace("!", " ").split()
+    content = [w for w in words if w.lower() not in _STOPWORDS]
+    return " ".join(content[:_MAX_BEAT_WORDS])
+
+
+_NEGATIVE_PROMPT = (
+    "border, frame, box, square, panel, grid, letterbox, vignette, "
+    "text, watermark, signature, logo, blur, dark, ugly, deformed"
+)
+
+
+def build_image_prompt(beat: str, hero: str, world: str) -> str:
+    """
+    Build a CLIP-safe image prompt (target ≤77 tokens).
+    Always includes the 'ghibli style' trigger phrase required by Ghibli-Diffusion.
+    Scene content leads so CLIP weights it highest.
+    """
+    scene = _trim_beat(beat)
+    parts = [scene]
+    if hero:
+        parts.append(hero[:30])
+    if world:
+        parts.append(world[:30])
+    parts += ["ghibli style", "soft watercolor", "warm light", "highly detailed", "cinematic"]
+    return ", ".join(parts)

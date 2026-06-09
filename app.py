@@ -21,6 +21,7 @@ Output tuple (19 elements, index-stable across all handlers):
 import html as _html
 import io
 import threading
+import traceback
 
 import gradio as gr
 
@@ -44,7 +45,7 @@ import ambient
 import pdf_export
 import stt
 import tts
-from engine_v2 import (
+from engine import (
     StoryState,
     SYSTEM,
     apply_turn,
@@ -53,7 +54,7 @@ from engine_v2 import (
     extract_partial_beat,
     parse_response,
 )
-import image_model_v2 as img_model
+import image_model as img_model
 import model as story_model
 
 THEMES = [
@@ -82,6 +83,10 @@ def _beat_html(text: str, streaming: bool = False) -> str:
 
 
 _SHIMMER_HTML = '<div class="image-placeholder"></div>'
+
+
+def _error_html(msg: str) -> str:
+    return f'<div class="status-error">&#10024; {_html.escape(msg)}</div>'
 
 
 def _loading_html() -> str:
@@ -124,13 +129,13 @@ def _opt(options: list, disabled: bool = False) -> list:
     return out
 
 
-def _setup_screen(state):
+def _setup_screen(state, status=""):
     return (
         state,
         gr.update(visible=True),
         gr.update(visible=False),
         gr.update(visible=False),
-        "", "", "",
+        "", status, "",
         *_opt([]),
         "",
         "",                                     # image_placeholder
@@ -150,6 +155,7 @@ def _story_screen(
     audio=None,
     ambient_val=None,
     shimmer=False,
+    status="",
 ):
     return (
         state,
@@ -157,7 +163,7 @@ def _story_screen(
         gr.update(visible=True),
         gr.update(visible=False),
         _loading_html() if loading else _beat_html(beat, streaming=streaming),
-        "",
+        status,
         _progress_html(moment, total),
         *_opt([] if (loading or streaming) else options),
         "",
@@ -227,6 +233,8 @@ def _generate_image_bytes(beat: str, hero: str, world: str, ref: bytes = None) -
         prompt = build_image_prompt(beat, hero, world)
         return img_model.generate_image(prompt, ref)
     except Exception:
+        print("[app] image generation failed:")
+        traceback.print_exc()
         return None
 
 
@@ -275,11 +283,21 @@ def start_story(theme, total_moments, num_options, custom_hero, state):
 
     # ② Stream the beat text as the model writes it
     beat, options = "", []
-    for kind, payload in _generate_beat_events(s):
-        if kind == "partial":
-            yield _story_screen(state, payload, [], 1, total, streaming=True)
-        else:
-            s, beat, options = payload
+    try:
+        for kind, payload in _generate_beat_events(s):
+            if kind == "partial":
+                yield _story_screen(state, payload, [], 1, total, streaming=True)
+            else:
+                s, beat, options = payload
+    except Exception:
+        traceback.print_exc()
+        yield _setup_screen(
+            state if isinstance(state, dict) else {},
+            status=_error_html(
+                "The storyteller lost the thread of the tale — pick a theme to try again!"
+            ),
+        )
+        return
 
     sd = s.to_dict()
     sd["_muted"] = muted
@@ -326,11 +344,21 @@ def choose_option(choice_idx: int, state: dict):
 
     # ② Stream the next beat
     beat, new_options = "", []
-    for kind, payload in _generate_beat_events(s):
-        if kind == "partial":
-            yield _story_screen(state, payload, [], s.moment + 1, s.total_moments, streaming=True)
-        else:
-            s, beat, new_options = payload
+    try:
+        for kind, payload in _generate_beat_events(s):
+            if kind == "partial":
+                yield _story_screen(state, payload, [], s.moment + 1, s.total_moments, streaming=True)
+            else:
+                s, beat, new_options = payload
+    except Exception:
+        traceback.print_exc()
+        # Restore the pre-click view (stored state was never advanced) so the
+        # same option can simply be clicked again.
+        yield _story_screen(
+            state, current_beat, options, s.moment, s.total_moments,
+            status=_error_html("The magic fizzled for a moment — try that choice again!"),
+        )
+        return
 
     is_final = s.moment >= s.total_moments - 1
     sd = s.to_dict()
@@ -371,7 +399,8 @@ def choose_option(choice_idx: int, state: dict):
             )
             yield _ending_screen(sd, beat, full_story, s.total_moments, pdf=pdf_path)
         except Exception:
-            pass
+            print("[app] PDF export failed:")
+            traceback.print_exc()
 
     else:
         # ③ Text + choices — shimmer only while there is no illustration yet
@@ -429,7 +458,7 @@ def toggle_sound(enabled, state):
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 
-with open("styles_v2.css", encoding="utf-8") as _f:
+with open("styles.css", encoding="utf-8") as _f:
     _CSS = _f.read()
 
 with gr.Blocks(title="StoryForge", css=_CSS) as demo:
@@ -476,6 +505,10 @@ with gr.Blocks(title="StoryForge", css=_CSS) as demo:
                 f'if(!tb)return;'
                 f'var nativeSet=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,\'value\')'
                 f'||Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,\'value\');'
+                # Clear first so re-picking the same theme (e.g. retry after an
+                # error) still produces a change event.
+                f'nativeSet.set.call(tb,\'\');'
+                f'tb.dispatchEvent(new Event(\'input\',{{bubbles:true}}));'
                 f'nativeSet.set.call(tb,{repr(tv)});'
                 f'tb.dispatchEvent(new Event(\'input\',{{bubbles:true}}));'
                 f'}})()">'
@@ -590,7 +623,7 @@ with gr.Blocks(title="StoryForge", css=_CSS) as demo:
     reset_btn_end.click(fn=reset_story, inputs=[story_state], outputs=ALL_OUTPUTS)
 
     # ── Re-inject styles (beats StreamingBar override) ──────────────────────
-    with open("styles_v2.css", encoding="utf-8") as _sf:
+    with open("styles.css", encoding="utf-8") as _sf:
         gr.HTML(f"<style>{_sf.read()}</style>")
 
 
