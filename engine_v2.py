@@ -121,6 +121,27 @@ def parse_response(raw: str) -> dict:
     return data
 
 
+_PARTIAL_BEAT_RE = re.compile(r'"beat"\s*:\s*"((?:[^"\\]|\\.)*)')
+
+
+def extract_partial_beat(raw: str) -> str:
+    """Best-effort beat text from a partially generated JSON response.
+
+    Used while streaming: the closing quote may not have arrived yet, and a
+    <think> block may still be open.
+    """
+    raw = re.sub(r"<think>.*?(?:</think>|$)", "", raw, flags=re.DOTALL)
+    m = _PARTIAL_BEAT_RE.search(raw)
+    if not m:
+        return ""
+    text = m.group(1)
+    try:
+        text = json.loads(f'"{text}"')
+    except json.JSONDecodeError:
+        text = text.replace('\\"', '"').replace("\\n", " ")
+    return _clean(text)
+
+
 def apply_turn(s: StoryState, data: dict) -> StoryState:
     if data.get("hero") and not s.hero:
         s.hero = data["hero"].strip()
