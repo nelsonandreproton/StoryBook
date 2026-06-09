@@ -1,5 +1,5 @@
 """
-image_model_v2.py — Image generation with optional character consistency.
+image_model.py — Image generation with optional character consistency.
 Uses Modal GPU (Ghibli-Diffusion + IP-Adapter) when Modal credentials are set,
 falls back to local CPU pipeline otherwise.
 """

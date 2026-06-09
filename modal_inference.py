@@ -202,6 +202,62 @@ class ImageModel:
         return buf.getvalue()
 
 
+# ── TTS — Kokoro-82M (open weights; CPU is plenty for an 82M model) ──────────
+
+tts_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .apt_install("espeak-ng")
+    .pip_install("kokoro>=0.9.4", "soundfile", "numpy")
+)
+
+
+@app.cls(
+    image=tts_image,
+    cpu=4,
+    volumes={"/models": model_vol},
+    timeout=60,
+    scaledown_window=300,
+)
+class TTSModel:
+    @modal.enter()
+    def load(self):
+        import os
+
+        os.environ.setdefault("HF_HOME", "/models/hf")
+        from kokoro import KPipeline
+
+        # American English eagerly; other languages created lazily per lang_code
+        self.pipelines = {"a": KPipeline(lang_code="a")}
+
+    def _pipeline(self, lang_code: str):
+        if lang_code not in self.pipelines:
+            from kokoro import KPipeline
+
+            self.pipelines[lang_code] = KPipeline(lang_code=lang_code)
+        return self.pipelines[lang_code]
+
+    @modal.method()
+    def speak(self, text: str, voice: str = "af_heart", lang_code: str = "a") -> bytes:
+        import io
+
+        import numpy as np
+        import soundfile as sf
+
+        chunks = []
+        for result in self._pipeline(lang_code)(text, voice=voice):
+            audio = result[2] if isinstance(result, tuple) else result.audio
+            if audio is None:
+                continue
+            if hasattr(audio, "detach"):
+                audio = audio.detach().cpu().numpy()
+            chunks.append(np.asarray(audio, dtype=np.float32))
+        if not chunks:
+            return b""
+        buf = io.BytesIO()
+        sf.write(buf, np.concatenate(chunks), 24000, format="WAV")
+        return buf.getvalue()
+
+
 # ── STT — Whisper small on T4 ─────────────────────────────────────────────────
 
 stt_image = (
@@ -224,7 +280,7 @@ class STTModel:
         self.model = whisper.load_model("small")
 
     @modal.method()
-    def transcribe(self, audio_bytes: bytes) -> str:
+    def transcribe(self, audio_bytes: bytes, language: str = "en") -> str:
         import tempfile
         import os
 
@@ -232,7 +288,7 @@ class STTModel:
             f.write(audio_bytes)
             path = f.name
         try:
-            result = self.model.transcribe(path, language="en")
+            result = self.model.transcribe(path, language=language)
             return result["text"].strip()
         finally:
             os.unlink(path)
