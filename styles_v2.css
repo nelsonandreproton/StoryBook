@@ -492,6 +492,80 @@ button#restart-big:hover {
     padding: 0.8rem 1.2rem !important;
 }
 
+/* ── Streaming cursor ───────────────────────────────── */
+.stream-cursor {
+    color: var(--coral);
+    margin-left: 2px;
+    animation: cursorBlink 1s steps(1) infinite;
+}
+@keyframes cursorBlink {
+    50% { opacity: 0; }
+}
+
+/* ── Image placeholder slot (shimmer skeleton) ──────── */
+#image-placeholder-slot,
+#image-placeholder-slot > div {
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+}
+
+/* ── Sound toggle ───────────────────────────────────── */
+#sound-row {
+    display: flex !important;
+    justify-content: center !important;
+    margin: 0 0 0.4rem 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+#sound-toggle {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: auto !important;
+    flex-grow: 0 !important;
+}
+#sound-toggle label {
+    font-family: 'Nunito', sans-serif !important;
+    font-size: 0.9rem !important;
+    color: var(--ink-soft) !important;
+    cursor: pointer !important;
+}
+#sound-toggle input[type="checkbox"] {
+    accent-color: var(--coral) !important;
+    cursor: pointer !important;
+}
+
+/* ── Mobile ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+    #app-title { font-size: 2rem !important; }
+    #app-tagline { font-size: 0.95rem !important; }
+    .theme-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    .theme-card { min-height: 96px; padding: 0.9rem 0.5rem; }
+    .tc-emoji { font-size: 2rem; }
+    .beat-card {
+        padding: 1.4rem 1.2rem;
+        border-radius: 20px;
+        min-height: 110px;
+    }
+    .beat-text { font-size: 1.15rem; line-height: 1.6; }
+    #sliders-row { padding: 0.7rem 0.8rem; }
+    .option-btn button:not(:disabled),
+    button.option-btn:not(:disabled) {
+        font-size: 0.95rem !important;
+        padding: 0.7rem 1rem !important;
+        min-height: 48px !important;
+    }
+    .image-placeholder { height: 220px; }
+}
+@media (max-width: 380px) {
+    .theme-grid { grid-template-columns: 1fr; }
+}
+
 /* ── Last-word rules (must stay at end of file) ─────── */
 /* Hide disabled option buttons — placed last so source order beats all !important duplicates */
 .option-btn button:disabled,

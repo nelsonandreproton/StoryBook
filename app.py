@@ -1,7 +1,7 @@
 """
 StoryForge — Gradio app.
 
-Output tuple (18 elements, index-stable across all handlers):
+Output tuple (19 elements, index-stable across all handlers):
   0  story_state
   1  setup_col
   2  story_col
@@ -11,10 +11,11 @@ Output tuple (18 elements, index-stable across all handlers):
   6  progress_html
   7-12  option_btns[0..5]
   13 full_story_md
-  14 beat_image
-  15 beat_audio        (TTS narration, edge-tts MP3)
-  16 ambient_audio     (background music, numpy WAV)
-  17 pdf_file          (downloadable PDF at story end)
+  14 image_placeholder (shimmer skeleton while the image generates)
+  15 beat_image
+  16 beat_audio        (TTS narration, edge-tts MP3)
+  17 ambient_audio     (background music, numpy WAV)
+  18 pdf_file          (downloadable PDF at story end)
 """
 
 import html as _html
@@ -49,6 +50,7 @@ from engine_v2 import (
     apply_turn,
     build_image_prompt,
     build_prompt,
+    extract_partial_beat,
     parse_response,
 )
 import image_model_v2 as img_model
@@ -67,9 +69,19 @@ MAX_OPTIONS = 6
 
 # ── HTML helpers ──────────────────────────────────────────────────────────────
 
-def _beat_html(text: str) -> str:
+def _beat_html(text: str, streaming: bool = False) -> str:
     esc = _html.escape(text)
+    if streaming:
+        # No beat-visible class: the fade-in animation would restart on every
+        # streamed chunk. The cursor blinks via CSS instead.
+        return (
+            '<div class="beat-card"><div class="beat-text">'
+            f'{esc}<span class="stream-cursor">&#9612;</span></div></div>'
+        )
     return f'<div class="beat-card beat-visible"><div class="beat-text">{esc}</div></div>'
+
+
+_SHIMMER_HTML = '<div class="image-placeholder"></div>'
 
 
 def _loading_html() -> str:
@@ -100,7 +112,7 @@ def _end_html(beat: str) -> str:
     )
 
 
-# ── Screen helpers — every handler yields exactly these 18 values ─────────────
+# ── Screen helpers — every handler yields exactly these 19 values ─────────────
 
 def _opt(options: list, disabled: bool = False) -> list:
     out = []
@@ -121,6 +133,7 @@ def _setup_screen(state):
         "", "", "",
         *_opt([]),
         "",
+        "",                                     # image_placeholder
         gr.update(value=None, visible=False),   # beat_image
         gr.update(value=None, visible=False),   # beat_audio
         gr.update(value=None, visible=False),   # ambient_audio
@@ -132,20 +145,23 @@ def _story_screen(
     state, beat, options, moment, total,
     *,
     loading=False,
+    streaming=False,
     image=None,
     audio=None,
     ambient_val=None,
+    shimmer=False,
 ):
     return (
         state,
         gr.update(visible=False),
         gr.update(visible=True),
         gr.update(visible=False),
-        _loading_html() if loading else _beat_html(beat),
+        _loading_html() if loading else _beat_html(beat, streaming=streaming),
         "",
         _progress_html(moment, total),
-        *_opt([] if loading else options),
+        *_opt([] if (loading or streaming) else options),
         "",
+        _SHIMMER_HTML if shimmer else "",
         gr.update() if image is None else gr.update(value=image, visible=True),
         gr.update() if audio is None else gr.update(value=audio, autoplay=True, visible=True),
         gr.update() if ambient_val is None else gr.update(value=ambient_val, autoplay=True, visible=True),
@@ -164,6 +180,7 @@ def _ending_screen(state, beat, full_story, total, *, image=None, audio=None, pd
         _progress_html(total, total),
         *_opt([]),
         full_story,
+        "",                                     # image_placeholder
         gr.update() if image is None else gr.update(value=image, visible=True),
         gr.update() if audio is None else gr.update(value=audio, autoplay=True, visible=True),
         gr.update(),                            # ambient_audio — keep playing
@@ -179,17 +196,30 @@ def _state_from(d: dict) -> StoryState:
 
 # ── Core generation ───────────────────────────────────────────────────────────
 
-def _generate_beat(s: StoryState) -> tuple:
+_STREAM_STEP_CHARS = 12
+
+
+def _generate_beat_events(s: StoryState):
+    """Yield ("partial", beat_text) while streaming, then ("done", (s, beat, options))."""
     prompt = build_prompt(s)
     is_final = (s.moment + 1) >= s.total_moments
-    raw = story_model.generate(SYSTEM, prompt, max_tokens=1024 if is_final else 512)
+    raw = ""
+    shown = 0
+    for acc in story_model.generate_stream(
+        SYSTEM, prompt, max_tokens=1024 if is_final else 512
+    ):
+        raw = acc
+        partial = extract_partial_beat(acc)
+        if partial and len(partial) - shown >= _STREAM_STEP_CHARS:
+            shown = len(partial)
+            yield "partial", partial
     data = parse_response(raw)
     if not is_final and not data.get("options"):
         raw2 = story_model.generate(SYSTEM, prompt, max_tokens=512)
         data2 = parse_response(raw2)
         data = data2 if data2.get("options") else {**data, "options": ["Continue the adventure"]}
     s = apply_turn(s, data)
-    return s, data["beat"], data.get("options", [])
+    yield "done", (s, data["beat"], data.get("options", []))
 
 
 def _generate_image_bytes(beat: str, hero: str, world: str, ref: bytes = None) -> bytes | None:
@@ -205,8 +235,11 @@ def _pil_from_bytes(b: bytes):
     return Image.open(io.BytesIO(b))
 
 
-def _parallel_image_and_audio(beat, hero, world, ref_bytes=None):
-    """Run image gen + TTS in parallel threads; returns (img_bytes, audio_path)."""
+def _parallel_image_and_audio(beat, hero, world, ref_bytes=None, muted=False):
+    """Run image gen + TTS in parallel threads; returns (img_bytes, audio_path).
+
+    When muted, TTS is skipped entirely (saves a network round-trip too).
+    """
     img_result: list = [None]
     aud_result: list = [None]
 
@@ -216,47 +249,57 @@ def _parallel_image_and_audio(beat, hero, world, ref_bytes=None):
     def _aud():
         aud_result[0] = tts.generate_speech(beat)
 
-    t1 = threading.Thread(target=_img, daemon=True)
-    t2 = threading.Thread(target=_aud, daemon=True)
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    threads = [threading.Thread(target=_img, daemon=True)]
+    if not muted:
+        threads.append(threading.Thread(target=_aud, daemon=True))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
     return img_result[0], aud_result[0]
 
 
 # ── Event handlers ────────────────────────────────────────────────────────────
 
 def start_story(theme, total_moments, num_options, custom_hero, state):
+    muted = bool(isinstance(state, dict) and state.get("_muted"))
     total, num = int(total_moments), int(num_options)
     s = StoryState(theme=theme, total_moments=total, num_options=num, moment=0)
     if custom_hero and custom_hero.strip():
         s.hero = custom_hero.strip()
 
-    amb = ambient.generate_ambient(theme)
+    amb = None if muted else ambient.generate_ambient(theme)
 
     # ① Loading screen with ambient music
     yield _story_screen(state, "", [], 1, total, loading=True, ambient_val=amb)
 
-    s, beat, options = _generate_beat(s)
+    # ② Stream the beat text as the model writes it
+    beat, options = "", []
+    for kind, payload in _generate_beat_events(s):
+        if kind == "partial":
+            yield _story_screen(state, payload, [], 1, total, streaming=True)
+        else:
+            s, beat, options = payload
+
     sd = s.to_dict()
+    sd["_muted"] = muted
     sd["_options"] = options
     sd["_current_beat"] = beat
     sd["_beat_images"] = []
 
-    # ② Text + choices
-    yield _story_screen(sd, beat, options, 1, total)
+    # ③ Full text + choices, shimmer where the illustration will appear
+    yield _story_screen(sd, beat, options, 1, total, shimmer=True)
 
-    # ③ Image + TTS in parallel
-    img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world)
+    # ④ Image + TTS in parallel
+    img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world, muted=muted)
     if img_bytes:
         sd["_reference_image"] = img_bytes
         sd["_beat_images"] = [img_bytes]
-        yield _story_screen(
-            sd, beat, options, 1, total,
-            image=_pil_from_bytes(img_bytes),
-            audio=audio_path,
-        )
-    elif audio_path:
-        yield _story_screen(sd, beat, options, 1, total, audio=audio_path)
+    yield _story_screen(
+        sd, beat, options, 1, total,
+        image=_pil_from_bytes(img_bytes) if img_bytes else None,
+        audio=audio_path,
+    )
 
 
 def on_theme_selected(theme_val, total_moments, num_options, custom_hero, state):
@@ -267,6 +310,7 @@ def on_theme_selected(theme_val, total_moments, num_options, custom_hero, state)
 
 def choose_option(choice_idx: int, state: dict):
     s = _state_from(state)
+    muted = bool(state.get("_muted"))
     options = state.get("_options", [])
     current_beat = state.get("_current_beat", "")
     chosen = options[choice_idx] if choice_idx < len(options) else "Continue"
@@ -280,9 +324,17 @@ def choose_option(choice_idx: int, state: dict):
     # ① Loading (keep previous image)
     yield _story_screen(state, current_beat, options, s.moment, s.total_moments, loading=True)
 
-    s, beat, new_options = _generate_beat(s)
+    # ② Stream the next beat
+    beat, new_options = "", []
+    for kind, payload in _generate_beat_events(s):
+        if kind == "partial":
+            yield _story_screen(state, payload, [], s.moment + 1, s.total_moments, streaming=True)
+        else:
+            s, beat, new_options = payload
+
     is_final = s.moment >= s.total_moments - 1
     sd = s.to_dict()
+    sd["_muted"] = muted
     sd["_options"] = new_options
     sd["_current_beat"] = beat
     sd["_reference_image"] = ref_bytes
@@ -290,14 +342,15 @@ def choose_option(choice_idx: int, state: dict):
 
     if is_final or not new_options:
         s.finished = True
+        sd["finished"] = True
         full_beats = [h["beat"] for h in s.history] + [beat]
         full_story = "\n\n".join(f"**Moment {i+1}:** {b}" for i, b in enumerate(full_beats))
 
-        # ② Ending text
+        # ③ Ending text
         yield _ending_screen(sd, beat, full_story, s.total_moments)
 
-        # ③ Image + TTS
-        img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world, ref_bytes)
+        # ④ Image + TTS
+        img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world, ref_bytes, muted=muted)
         if img_bytes:
             beat_images.append(img_bytes)
             sd["_beat_images"] = beat_images
@@ -307,7 +360,7 @@ def choose_option(choice_idx: int, state: dict):
             audio=audio_path,
         )
 
-        # ④ PDF
+        # ⑤ PDF
         try:
             pdf_path = pdf_export.build_pdf(
                 theme=s.theme,
@@ -321,11 +374,12 @@ def choose_option(choice_idx: int, state: dict):
             pass
 
     else:
-        # ② Text + choices
-        yield _story_screen(sd, beat, new_options, s.moment + 1, s.total_moments)
+        # ③ Text + choices — shimmer only while there is no illustration yet
+        yield _story_screen(sd, beat, new_options, s.moment + 1, s.total_moments,
+                            shimmer=not beat_images)
 
-        # ③ Image + TTS
-        img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world, ref_bytes)
+        # ④ Image + TTS
+        img_bytes, audio_path = _parallel_image_and_audio(beat, s.hero, s.world, ref_bytes, muted=muted)
         if img_bytes:
             beat_images.append(img_bytes)
             sd["_beat_images"] = beat_images
@@ -349,8 +403,28 @@ def on_voice_input(audio_tuple, state: dict):
             yield from choose_option(idx, state)
 
 
-def reset_story():
-    return _setup_screen({})
+def reset_story(state):
+    keep = {}
+    if isinstance(state, dict) and state.get("_muted"):
+        keep["_muted"] = True
+    return _setup_screen(keep)
+
+
+def toggle_sound(enabled, state):
+    """Mute/unmute both audio players; restart ambient music when re-enabled mid-story."""
+    state = dict(state) if isinstance(state, dict) else {}
+    state["_muted"] = not enabled
+    if not enabled:
+        return (
+            state,
+            gr.update(value=None, visible=False),
+            gr.update(value=None, visible=False),
+        )
+    s = _state_from(state)
+    if s.theme and not s.finished:
+        amb = ambient.generate_ambient(s.theme)
+        return state, gr.update(), gr.update(value=amb, autoplay=True, visible=True)
+    return state, gr.update(), gr.update()
 
 
 # ── UI ────────────────────────────────────────────────────────────────────────
@@ -368,7 +442,7 @@ with gr.Blocks(title="StoryForge", css=_CSS) as demo:
     # ── Setup ──────────────────────────────────────────────────────────────
     with gr.Column(elem_id="setup-section") as setup_col:
         with gr.Row(elem_id="sliders-row"):
-            moments_slider = gr.Slider(3, 15, value=10, step=1,
+            moments_slider = gr.Slider(3, 15, value=5, step=1,
                                        label="How many moments?",
                                        info="More moments = longer story")
             options_slider = gr.Slider(2, 6, value=5, step=1,
@@ -410,9 +484,16 @@ with gr.Blocks(title="StoryForge", css=_CSS) as demo:
         gr.HTML(cards_html)
 
     # ── Shared content ─────────────────────────────────────────────────────
+    with gr.Row(elem_id="sound-row"):
+        sound_toggle = gr.Checkbox(
+            value=True, label="🔊 Sound", elem_id="sound-toggle", container=False,
+        )
+
     progress_html = gr.HTML("", elem_id="progress-text")
     status_html   = gr.HTML("", elem_id="status-text")
     beat_display  = gr.HTML("", elem_id="beat-display")
+
+    image_placeholder = gr.HTML("", elem_id="image-placeholder-slot")
 
     beat_image = gr.Image(
         value=None, visible=False, show_label=False,
@@ -464,12 +545,13 @@ with gr.Blocks(title="StoryForge", css=_CSS) as demo:
         )
         reset_btn_end = gr.Button("Start a new adventure", elem_id="restart-big")
 
-    # ── Output list (18 elements) ───────────────────────────────────────────
+    # ── Output list (19 elements) ───────────────────────────────────────────
     ALL_OUTPUTS = (
         [story_state, setup_col, story_col, ending_col,
          beat_display, status_html, progress_html]
         + option_btns
-        + [full_story_text, beat_image, beat_audio, ambient_audio, pdf_file]
+        + [full_story_text, image_placeholder, beat_image,
+           beat_audio, ambient_audio, pdf_file]
     )
 
     # ── Wire theme bus ──────────────────────────────────────────────────────
@@ -492,9 +574,16 @@ with gr.Blocks(title="StoryForge", css=_CSS) as demo:
         outputs=ALL_OUTPUTS,
     )
 
+    # ── Wire sound toggle ───────────────────────────────────────────────────
+    sound_toggle.change(
+        fn=toggle_sound,
+        inputs=[sound_toggle, story_state],
+        outputs=[story_state, beat_audio, ambient_audio],
+    )
+
     # ── Wire reset ──────────────────────────────────────────────────────────
-    reset_btn_story.click(fn=reset_story, inputs=[], outputs=ALL_OUTPUTS)
-    reset_btn_end.click(fn=reset_story, inputs=[], outputs=ALL_OUTPUTS)
+    reset_btn_story.click(fn=reset_story, inputs=[story_state], outputs=ALL_OUTPUTS)
+    reset_btn_end.click(fn=reset_story, inputs=[story_state], outputs=ALL_OUTPUTS)
 
     # ── Re-inject styles (beats StreamingBar override) ──────────────────────
     with open("styles_v2.css", encoding="utf-8") as _sf:

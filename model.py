@@ -26,6 +26,15 @@ def _local_llm():
     return Llama(model_path=path, n_ctx=N_CTX, n_threads=N_THREADS, verbose=False)
 
 
+def _local_messages(system: str, user: str) -> list:
+    # "/no_think" is Qwen3's soft switch — without it the local GGUF burns most
+    # of the token budget inside <think> blocks and truncates the JSON.
+    return [
+        {"role": "system", "content": system + " /no_think"},
+        {"role": "user", "content": user},
+    ]
+
+
 def generate(system: str, user: str, max_tokens: int = 512) -> str:
     if _modal_ready():
         try:
@@ -40,12 +49,55 @@ def generate(system: str, user: str, max_tokens: int = 512) -> str:
     # Local fallback
     llm = _local_llm()
     out = llm.create_chat_completion(
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+        messages=_local_messages(system, user),
         max_tokens=max_tokens,
         temperature=0.8,
         top_p=0.9,
     )
     return out["choices"][0]["message"]["content"]
+
+
+def generate_stream(system: str, user: str, max_tokens: int = 512):
+    """Yield the accumulated response text as it is generated.
+
+    Fallback chain: Modal streaming → Modal non-streaming (older deployment
+    without generate_stream) → local llama-cpp streaming.
+    """
+    if _modal_ready():
+        acc = ""
+        try:
+            import modal
+
+            TextModel = modal.Cls.from_name(MODAL_APP, "TextModel")
+            for piece in TextModel().generate_stream.remote_gen(system, user, max_tokens):
+                acc += piece
+                yield acc
+            return
+        except Exception as e:
+            print(f"[model] Modal stream failed: {e}")
+            if acc:
+                # Partial stream already surfaced — restart cleanly below.
+                acc = ""
+        try:
+            import modal
+
+            TextModel = modal.Cls.from_name(MODAL_APP, "TextModel")
+            yield TextModel().generate.remote(system, user, max_tokens)
+            return
+        except Exception as e:
+            import traceback
+            print(f"[model] Modal call failed, falling back to local: {e}")
+            traceback.print_exc()
+    llm = _local_llm()
+    acc = ""
+    for part in llm.create_chat_completion(
+        messages=_local_messages(system, user),
+        max_tokens=max_tokens,
+        temperature=0.8,
+        top_p=0.9,
+        stream=True,
+    ):
+        delta = part["choices"][0].get("delta", {}).get("content") or ""
+        if delta:
+            acc += delta
+            yield acc

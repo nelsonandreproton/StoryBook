@@ -38,5 +38,5 @@ Four files. No framework beyond Gradio.
 
 - `gr.HTML` sanitizes `<script>` tags — no JS in HTML components. All animations are CSS-only.
 - Gradio renders `visible=False` buttons as disabled-but-present in the DOM during streaming. Hide them with `button.option-btn:disabled { display: none !important }` — this rule must appear after the general `.option-btn button` rule in the CSS.
-- The 14-element output tuple order is: `[story_state, setup_col, story_col, ending_col, beat_display, status_html, progress_html, opt0..opt5, full_story_md]`. All handlers must yield exactly this shape.
-- Qwen3 thinking mode is always on. `parse_response()` must strip `<think>...</think>` before JSON extraction.
+- The output tuple is 19 elements, index-stable: `[story_state, setup_col, story_col, ending_col, beat_display, status_html, progress_html, opt0..opt5, full_story_md, image_placeholder, beat_image, beat_audio, ambient_audio, pdf_file]`. All handlers must yield exactly this shape (canonical list in the `app.py` docstring; the live app uses `engine_v2.py`/`styles_v2.css`, not `engine.py`/`styles.css`).
+- Qwen3 thinking is disabled on Modal (`enable_thinking=False`) and via `/no_think` on the local GGUF path, but `parse_response()` must still strip `<think>...</think>` before JSON extraction as a safety net.

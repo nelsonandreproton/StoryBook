@@ -82,6 +82,43 @@ class TextModel:
         new_tok = out[0][inputs["input_ids"].shape[1]:]
         return self.tok.decode(new_tok, skip_special_tokens=True)
 
+    @modal.method()
+    def generate_stream(self, system: str, user: str, max_tokens: int = 512):
+        """Generator variant — yields decoded text pieces as they are produced."""
+        import threading
+
+        from transformers import TextIteratorStreamer
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        text = self.tok.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
+        )
+        inputs = self.tok(text, return_tensors="pt").to(self.mdl.device)
+        streamer = TextIteratorStreamer(
+            self.tok, skip_prompt=True, skip_special_tokens=True
+        )
+        gen_kwargs = dict(
+            **inputs,
+            max_new_tokens=max_tokens,
+            temperature=0.8,
+            top_p=0.9,
+            do_sample=True,
+            pad_token_id=self.tok.eos_token_id,
+            streamer=streamer,
+        )
+        thread = threading.Thread(target=self.mdl.generate, kwargs=gen_kwargs)
+        thread.start()
+        for piece in streamer:
+            if piece:
+                yield piece
+        thread.join()
+
 
 # ── Image generation — Ghibli-Diffusion + IP-Adapter on T4 ───────────────────
 
