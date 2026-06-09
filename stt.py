@@ -13,21 +13,22 @@ def _modal_ready() -> bool:
     return bool(os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"))
 
 
-@lru_cache(maxsize=1)
-def _local_model():
+@lru_cache(maxsize=2)
+def _local_model(model_id: str):
     from transformers import pipeline
 
     return pipeline(
         "automatic-speech-recognition",
-        model="openai/whisper-tiny.en",
+        model=model_id,
         return_timestamps=False,
     )
 
 
-def transcribe(audio_tuple) -> str | None:
+def transcribe(audio_tuple, language: str = "en") -> str | None:
     """
     audio_tuple: (sample_rate, numpy_array) from gr.Audio(type='numpy').
-    Returns transcribed English text, or None on failure.
+    language: whisper language code ("en", "pt", ...).
+    Returns transcribed text, or None on failure.
     """
     if audio_tuple is None:
         return None
@@ -51,12 +52,14 @@ def transcribe(audio_tuple) -> str | None:
                 buf = io.BytesIO()
                 sf.write(buf, audio, sample_rate, format="WAV")
                 STTModel = modal.Cls.from_name(MODAL_APP, "STTModel")
-                return STTModel().transcribe.remote(buf.getvalue())
+                return STTModel().transcribe.remote(buf.getvalue(), language)
             except Exception:
                 pass
 
-        # Local fallback with transformers whisper-tiny
-        asr = _local_model()
+        # Local fallback — the .en checkpoint is better for English, the
+        # multilingual tiny model covers everything else.
+        model_id = "openai/whisper-tiny.en" if language == "en" else "openai/whisper-tiny"
+        asr = _local_model(model_id)
         result = asr({"array": audio, "sampling_rate": sample_rate})
         return result["text"].strip()
     except Exception:

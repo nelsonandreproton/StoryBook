@@ -20,6 +20,7 @@ class StoryState:
     moment: int = 0
     total_moments: int = 10
     num_options: int = 5
+    language: str = "English"
     finished: bool = False
 
     def to_dict(self):
@@ -30,13 +31,18 @@ class StoryState:
         return StoryState(**d) if d else StoryState()
 
 
-SYSTEM = (
-    "You are a warm, imaginative storyteller writing a branching picture-book "
-    "adventure for a young child (age 4-8). Keep language simple, kind, and "
-    "vivid. No violence, no scary or unsafe content. Every beat is 2-4 short "
-    "sentences. ALWAYS write in English only. "
-    "You ALWAYS answer with valid JSON and nothing else."
-)
+def system_prompt(language: str = "English") -> str:
+    return (
+        "You are a warm, imaginative storyteller writing a branching picture-book "
+        "adventure for a young child (age 4-8). Keep language simple, kind, and "
+        "vivid. No violence, no scary or unsafe content. Every beat is 2-4 short "
+        f"sentences. ALWAYS write the story, the choices and all descriptions in "
+        f"{language} only — except the JSON keys and the 'scene' field, which are "
+        "always English. You ALWAYS answer with valid JSON and nothing else."
+    )
+
+
+SYSTEM = system_prompt()
 
 
 def _state_block(s: StoryState) -> str:
@@ -79,6 +85,7 @@ def build_prompt(s: StoryState) -> str:
         '"hero": "<short hero description, only if newly established else repeat>", '
         '"world": "<short world description, same rule>", '
         '"new_facts": ["<any new canonical fact to remember>"], '
+        '"scene": "<6-12 word visual description of this beat, in English>", '
         '"options": ["<choice 1>", "..."]}'
     )
     return (
@@ -118,6 +125,8 @@ def parse_response(raw: str) -> dict:
     data.setdefault("new_facts", [])
     data.setdefault("hero", "")
     data.setdefault("world", "")
+    data.setdefault("scene", "")
+    data["scene"] = _clean(str(data["scene"] or ""))
     data["beat"] = _clean(data["beat"])
     data["options"] = [_clean(o) for o in data["options"] if o]
     return data
@@ -181,13 +190,15 @@ _NEGATIVE_PROMPT = (
 )
 
 
-def build_image_prompt(beat: str, hero: str, world: str) -> str:
+def build_image_prompt(beat: str, hero: str, world: str, scene: str = "") -> str:
     """
     Build a CLIP-safe image prompt (target ≤77 tokens).
     Always includes the 'ghibli style' trigger phrase required by Ghibli-Diffusion.
-    Scene content leads so CLIP weights it highest.
+    Scene content leads so CLIP weights it highest. The model's English "scene"
+    field is preferred over the raw beat — it stays English even when the story
+    is written in another language (SD 1.5's CLIP understands English best).
     """
-    scene = _trim_beat(beat)
+    scene = (scene or "").strip() or _trim_beat(beat)
     parts = [scene]
     if hero:
         parts.append(hero[:30])

@@ -226,17 +226,25 @@ class TTSModel:
         os.environ.setdefault("HF_HOME", "/models/hf")
         from kokoro import KPipeline
 
-        self.pipeline = KPipeline(lang_code="a")  # American English
+        # American English eagerly; other languages created lazily per lang_code
+        self.pipelines = {"a": KPipeline(lang_code="a")}
+
+    def _pipeline(self, lang_code: str):
+        if lang_code not in self.pipelines:
+            from kokoro import KPipeline
+
+            self.pipelines[lang_code] = KPipeline(lang_code=lang_code)
+        return self.pipelines[lang_code]
 
     @modal.method()
-    def speak(self, text: str, voice: str = "af_heart") -> bytes:
+    def speak(self, text: str, voice: str = "af_heart", lang_code: str = "a") -> bytes:
         import io
 
         import numpy as np
         import soundfile as sf
 
         chunks = []
-        for result in self.pipeline(text, voice=voice):
+        for result in self._pipeline(lang_code)(text, voice=voice):
             audio = result[2] if isinstance(result, tuple) else result.audio
             if audio is None:
                 continue
@@ -272,7 +280,7 @@ class STTModel:
         self.model = whisper.load_model("small")
 
     @modal.method()
-    def transcribe(self, audio_bytes: bytes) -> str:
+    def transcribe(self, audio_bytes: bytes, language: str = "en") -> str:
         import tempfile
         import os
 
@@ -280,7 +288,7 @@ class STTModel:
             f.write(audio_bytes)
             path = f.name
         try:
-            result = self.model.transcribe(path, language="en")
+            result = self.model.transcribe(path, language=language)
             return result["text"].strip()
         finally:
             os.unlink(path)
