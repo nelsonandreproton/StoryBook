@@ -34,7 +34,7 @@ text_image = (
     gpu="A10G",
     volumes={"/models": model_vol},
     timeout=120,
-    scaledown_window=300,
+    scaledown_window=120,
 )
 class TextModel:
     model_id: str = "Qwen/Qwen3-4B"
@@ -140,7 +140,7 @@ img_image = (
     gpu="T4",
     volumes={"/models": model_vol},
     timeout=120,
-    scaledown_window=300,
+    scaledown_window=120,
 )
 class ImageModel:
     model_id: str = "nitrosocke/Ghibli-Diffusion"
@@ -158,6 +158,7 @@ class ImageModel:
         ).to("cuda")
         self.pipe.set_progress_bar_config(disable=True)
         # Explicitly unload any cached IP-Adapter state from volume
+        self._ip_loaded = False
         try:
             self.pipe.unload_ip_adapter()
         except Exception:
@@ -185,16 +186,28 @@ class ImageModel:
         )
         if reference_bytes:
             try:
-                self.pipe.load_ip_adapter(
-                    "h94/IP-Adapter",
-                    subfolder="models",
-                    weight_name="ip-adapter_sd15.bin",
-                )
+                # Load once per container, not once per beat — the adapter
+                # weights are identical every call and loading burns GPU time.
+                if not self._ip_loaded:
+                    self.pipe.load_ip_adapter(
+                        "h94/IP-Adapter",
+                        subfolder="models",
+                        weight_name="ip-adapter_sd15.bin",
+                    )
+                    self._ip_loaded = True
                 self.pipe.set_ip_adapter_scale(0.5)
                 ref = Image.open(io.BytesIO(reference_bytes)).convert("RGB")
                 kwargs["ip_adapter_image"] = ref
             except Exception:
                 pass
+        elif self._ip_loaded:
+            # New story on a warm container: no reference means no adapter —
+            # a loaded adapter without ip_adapter_image TypeErrors in diffusers.
+            try:
+                self.pipe.unload_ip_adapter()
+            except Exception:
+                pass
+            self._ip_loaded = False
 
         result = self.pipe(**kwargs)
         buf = io.BytesIO()
@@ -213,10 +226,10 @@ tts_image = (
 
 @app.cls(
     image=tts_image,
-    cpu=4,
+    cpu=2,
     volumes={"/models": model_vol},
     timeout=60,
-    scaledown_window=300,
+    scaledown_window=120,
 )
 class TTSModel:
     @modal.enter()
@@ -271,7 +284,7 @@ stt_image = (
     image=stt_image,
     gpu="T4",
     timeout=60,
-    scaledown_window=300,
+    scaledown_window=120,
 )
 class STTModel:
     @modal.enter()
