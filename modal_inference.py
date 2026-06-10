@@ -148,7 +148,7 @@ class ImageModel:
     @modal.enter()
     def load(self):
         import torch
-        from diffusers import StableDiffusionPipeline
+        from diffusers import DPMSolverMultistepScheduler, StableDiffusionPipeline
 
         self.pipe = StableDiffusionPipeline.from_pretrained(
             self.model_id,
@@ -156,6 +156,10 @@ class ImageModel:
             safety_checker=None,
             cache_dir="/models",
         ).to("cuda")
+        # DPM++ 2M Karras reaches default-scheduler quality in ~14 steps vs 20
+        self.pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            self.pipe.scheduler.config, use_karras_sigmas=True
+        )
         self.pipe.set_progress_bar_config(disable=True)
         # Explicitly unload any cached IP-Adapter state from volume
         self._ip_loaded = False
@@ -170,7 +174,7 @@ class ImageModel:
         prompt: str,
         reference_bytes: bytes = None,
         negative_prompt: str = "",
-        steps: int = 20,
+        steps: int = 14,
         size: int = 512,
     ) -> bytes:
         import io
